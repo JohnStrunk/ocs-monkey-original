@@ -6,7 +6,8 @@ import pytest
 from util import handle_api, start_and_waitfor_pod
 
 
-def test_attach_time(benchmark, unique_namespace):
+@pytest.mark.benchmark(min_rounds=10)
+def test_attach_time(benchmark, unique_namespace, storageclass_iterator):
     """Benchmark the time required to start a pod w/ an attached PVC."""
     core_v1 = k8s.CoreV1Api()
 
@@ -26,7 +27,7 @@ def test_attach_time(benchmark, unique_namespace):
                                      "storage": "1Gi"
                                  }
                              },
-                             "storageClassName": "csi-rbd"
+                             "storageClassName": storageclass_iterator
                          }
                      })
 

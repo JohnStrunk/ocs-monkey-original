@@ -15,6 +15,12 @@ def load_kubeconfig():
     kubernetes.config.load_kube_config()
 
 
+@pytest.fixture(params=["csi-rbd", "gp2"])
+def storageclass_iterator(request):
+    """Allow a test to iterate across a number of storage classes."""
+    return request.param
+
+
 @pytest.fixture
 def unique_namespace(request, load_kubeconfig):
     """

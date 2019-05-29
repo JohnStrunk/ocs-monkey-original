@@ -8,7 +8,7 @@ import pytest
 from util import handle_api, start_and_waitfor_pod
 
 
-def _provision_start_delete(namespace):
+def _provision_start_delete(namespace, sc_name):
     core_v1 = k8s.CoreV1Api()
     pvc_name = f"pvc-{random.randrange(999999999)}"
     pod_name = f"pod-{random.randrange(999999999)}"
@@ -26,7 +26,7 @@ def _provision_start_delete(namespace):
                                      "storage": "1Gi"
                                  }
                              },
-                             "storageClassName": "csi-rbd"
+                             "storageClassName": sc_name
                          }
                      })
 
@@ -65,9 +65,12 @@ def _provision_start_delete(namespace):
                body=k8s.V1DeleteOptions())
 
 
-def test_provision_and_attach_time(benchmark, unique_namespace):
+@pytest.mark.benchmark(min_rounds=10)
+def test_provision_attach_time(benchmark,
+                               unique_namespace,
+                               storageclass_iterator):
     """Benchmark the time provision a PV and start a pod that uses it."""
-    benchmark(_provision_start_delete, unique_namespace)
+    benchmark(_provision_start_delete, unique_namespace, storageclass_iterator)
 
 
 if __name__ == '__main__':
