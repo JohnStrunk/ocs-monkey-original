@@ -1,22 +1,22 @@
 #! /usr/bin/env python3
-"""Measure the time required to start a pod that uses a PV."""
+"""Measure the time to provision a new PV and start an associated pod."""
+
+import random
 
 import kubernetes.client as k8s
 import pytest
 from util import handle_api, start_and_waitfor_pod
 
 
-def test_attach_time(benchmark, unique_namespace):
-    """Benchmark the time required to start a pod w/ an attached PVC."""
+def _provision_start_delete(namespace):
     core_v1 = k8s.CoreV1Api()
-
-    namespace = unique_namespace
-
+    pvc_name = f"pvc-{random.randrange(999999999)}"
+    pod_name = f"pod-{random.randrange(999999999)}"
     pvc = handle_api(core_v1.create_namespaced_persistent_volume_claim,
                      namespace=namespace.metadata.name,
                      body={
                          "metadata": {
-                             "name": "mypvc",
+                             "name": pvc_name,
                              "namespace": namespace.metadata.name
                          },
                          "spec": {
@@ -30,16 +30,9 @@ def test_attach_time(benchmark, unique_namespace):
                          }
                      })
 
-    def start_and_delete(pod_dict):
-        out_pod = start_and_waitfor_pod(pod_dict)
-        handle_api(core_v1.delete_namespaced_pod,
-                   namespace=out_pod.metadata.namespace,
-                   name=out_pod.metadata.name,
-                   body=k8s.V1DeleteOptions())
-
-    pod = {
+    pod_dict = {
         "metadata": {
-            "name": "mypod",
+            "name": pod_name,
             "namespace": namespace.metadata.name
         },
         "spec": {
@@ -61,12 +54,20 @@ def test_attach_time(benchmark, unique_namespace):
             }]
         }
     }
-    benchmark(start_and_delete, pod)
-
+    pod = start_and_waitfor_pod(pod_dict)
+    handle_api(core_v1.delete_namespaced_pod,
+               namespace=pod.metadata.namespace,
+               name=pod.metadata.name,
+               body=k8s.V1DeleteOptions())
     handle_api(core_v1.delete_namespaced_persistent_volume_claim,
                namespace=pvc.metadata.namespace,
                name=pvc.metadata.name,
                body=k8s.V1DeleteOptions())
+
+
+def test_provision_and_attach_time(benchmark, unique_namespace):
+    """Benchmark the time provision a PV and start a pod that uses it."""
+    benchmark(_provision_start_delete, unique_namespace)
 
 
 if __name__ == '__main__':
