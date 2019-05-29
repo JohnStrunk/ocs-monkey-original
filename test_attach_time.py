@@ -9,6 +9,42 @@ from kubernetes.client.rest import ApiException
 import pytest
 
 
+@pytest.fixture(scope="module")
+def fixture_kubeconfig():
+    """Load the kube configuration so we can contact the cluster."""
+    kubernetes.config.load_kube_config()
+
+
+@pytest.fixture
+def fixture_namespace(request, fixture_kubeconfig):
+    """
+    Create a namespace in which to run a test.
+
+    This will create a namespace with a random name and automatically delete it
+    at the end of the test.
+
+    Returns:
+        V1Namespace object describing the namespace that has been created for
+        this test.
+
+    """
+    core_v1 = k8s.CoreV1Api()
+    ns_name = f"ns-{time.perf_counter_ns()}"
+    namespace = handle_api(core_v1.create_namespace,
+                           body={
+                               "metadata": {
+                                   "name": ns_name
+                               }
+                           })
+
+    def teardown():
+        handle_api(core_v1.delete_namespace,
+                   name=namespace.metadata.name,
+                   body=k8s.V1DeleteOptions())
+    request.addfinalizer(teardown)
+    return namespace
+
+
 def handle_api(func, *args, **kwargs):
     """
     Call kubernetes.client APIs and handle Execptions.
@@ -69,9 +105,8 @@ def start_and_waitfor_pod(pod_dict):
     return pod
 
 
-def test_can_create_namespace():
+def test_can_create_namespace(fixture_kubeconfig):
     """Test whether we can create a namespace."""
-    kubernetes.config.load_kube_config()
     core_v1 = k8s.CoreV1Api()
     ns_name = "my-namespace"
     namespace = handle_api(core_v1.create_namespace,
@@ -87,17 +122,11 @@ def test_can_create_namespace():
                body=k8s.V1DeleteOptions())
 
 
-def test_attach_times(benchmark):
+def test_attach_times(benchmark, fixture_namespace):
     """Benchmark the time required to start a pod w/ an attached PVC."""
-    kubernetes.config.load_kube_config()
     core_v1 = k8s.CoreV1Api()
 
-    namespace = handle_api(core_v1.create_namespace,
-                           body={
-                               "metadata": {
-                                   "name": "myns"
-                               }
-                           })
+    namespace = fixture_namespace
 
     pvc = handle_api(core_v1.create_namespaced_persistent_volume_claim,
                      namespace=namespace.metadata.name,
@@ -153,9 +182,6 @@ def test_attach_times(benchmark):
     handle_api(core_v1.delete_namespaced_persistent_volume_claim,
                namespace=pvc.metadata.namespace,
                name=pvc.metadata.name,
-               body=k8s.V1DeleteOptions())
-    handle_api(core_v1.delete_namespace,
-               name=namespace.metadata.name,
                body=k8s.V1DeleteOptions())
 
 
