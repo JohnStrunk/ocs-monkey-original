@@ -15,7 +15,7 @@ def load_kubeconfig():
     kubernetes.config.load_kube_config()
 
 
-@pytest.fixture(params=["csi-rbd", "gp2"])
+@pytest.fixture(params=["csi-cephfs", "csi-rbd", "gp2"])
 def storageclass_iterator(request):
     """Allow a test to iterate across a number of storage classes."""
     return request.param
