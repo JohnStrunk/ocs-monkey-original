@@ -1,6 +1,4 @@
-"""
-Defines the Event class.
-"""
+"""Defines the Event class."""
 
 import abc
 from typing import Callable, List  # pylint: disable=unused-import
