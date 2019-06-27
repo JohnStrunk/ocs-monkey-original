@@ -108,7 +108,7 @@ class Event(abc.ABC):
 
     def __str__(self) -> str:
         """Return string representation of an Event."""
-        return f"{self.when}"
+        return f"Event@{self.when}"
 
     def __eq__(self, other: object) -> bool:
         """Equal."""
