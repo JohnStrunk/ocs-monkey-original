@@ -1,4 +1,11 @@
-from copy import deepcopy
+"""
+Randomized workload generator to mimic OSIO.
+
+The workload can be started by instantiating a single Event of type
+ExponentialDeployment.
+"""
+
+
 import random
 import time
 from typing import Any, Callable, Dict, List  # pylint: disable=unused-import

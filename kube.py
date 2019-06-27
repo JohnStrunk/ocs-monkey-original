@@ -14,7 +14,7 @@ import kubernetes.client as k8s
 from kubernetes.client.rest import ApiException
 
 
-MANIFEST = 'Dict[str, Any]'
+MANIFEST = Dict[str, Any]
 
 # Load the kubernetes config so we can interact w/ the API
 if os.getenv('KUBERNETES_SERVICE_HOST'):
