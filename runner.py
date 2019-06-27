@@ -3,7 +3,7 @@
 import logging
 
 import event
-import deployment_controller as osio
+import osio
 import kube
 
 logging.basicConfig(level=logging.INFO)
