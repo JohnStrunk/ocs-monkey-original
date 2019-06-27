@@ -3,33 +3,76 @@ import random
 import time
 from typing import Any, Callable, Dict, List  # pylint: disable=unused-import
 
-from event import Event
-import kube
 import kubernetes.client as k8s
 
-def uniquify_deployment(deploy: kube.MANIFEST) -> kube.MANIFEST:
-    """
-    Make a deployment unique.
+import kube
+from event import Event
 
-    Deployments need to be unique in name and label selector(s) for the
-    controlled pods.
+def _get_workload(ns_name: str, sc_name: str) -> Dict[str, kube.MANIFEST]:
     """
-    out = deepcopy(deploy)
-    uid = time.perf_counter_ns()
-    # Unique name for the Deployment
-    out["metadata"]["name"] = f'{out["metadata"]["name"]}-{uid}'
-    # Set up the label selector on the Deployment
-    out["spec"]["selector"] = {
-        "matchLabels": {
-            "deployment-id": str(uid)
+    Generate a workload description.
+
+    The description contains "uniquified" manifests suitable for giving to the
+    kubernetes API.
+    """
+    manifests = {}
+    unique_id = str(time.perf_counter_ns())
+
+    manifests["deployment"] = {
+        "metadata": {
+            "name": f"osio-worker-{unique_id}",
+            "namespace": ns_name,
+        },
+        "spec": {
+            "replicas": 1,
+            "selector": {
+                "matchLabels": {
+                    "deployment-id": unique_id
+                }
+            },
+            "template": {
+                "metadata": {
+                    "labels": {
+                        "deployment-id": unique_id
+                    }
+                },
+                "spec": {
+                    "containers": [{
+                        "name": "busybox",
+                        "image": "busybox",
+                        "command": ["sleep", "99999"],
+                        "volumeMounts": [{
+                            "name": "data",
+                            "mountPath": "/mnt"
+                        }]
+                    }],
+                    "volumes": [{
+                        "name": "data",
+                        "persistentVolumeClaim": {
+                            "claimName": f"pvc-{unique_id}"
+                        }
+                    }]
+                }
+            }
         }
     }
-    # Set up the correcponding label on the Pod template
-    out["spec"]["template"].setdefault("metadata", {})
-    labels = out["spec"]["template"]["metadata"].setdefault("labels", {})
-    labels["deployment-id"] = str(uid)
-    out["spec"]["template"]["metadata"]["labels"] = labels
-    return out
+
+    manifests["pvc"] = {
+        "metadata": {
+            "name": f"pvc-{unique_id}",
+            "namespace": ns_name
+        },
+        "spec": {
+            "accessModes": ["ReadWriteOnce"],
+            "resources": {
+                "requests": {
+                    "storage": "1Gi"
+                }
+            },
+            "storageClassName": sc_name
+        }
+    }
+    return manifests
 
 class ExponentialDeployment(Event):
     """
@@ -46,8 +89,7 @@ class ExponentialDeployment(Event):
                  interarrival: float,
                  lifetime: float,
                  active: float,
-                 idle: float,
-                 deployment: kube.MANIFEST) -> None:
+                 idle: float) -> None:
         """
         Deployments are created and destroyed at some random rate.
 
@@ -64,21 +106,21 @@ class ExponentialDeployment(Event):
                 becomes idle.
             idle: The mean idle time for the Deployment before it becomes
                 active.
-            deployment: A dict describing the deployment object to create
 
         """
         self._interarrival = interarrival
         self._lifetime = lifetime
         self._active = active
         self._idle = idle
-        self._deployment = deepcopy(deployment)
         super().__init__(when=time.time() +
                          random.expovariate(1/self._interarrival))
 
     def execute(self) -> 'List[Event]':
         """Create a new Deployment & schedule it's destruction."""
         destroy_time = time.time() + random.expovariate(1/self._lifetime)
-        deploy = uniquify_deployment(self._deployment)
+        manifests = _get_workload("monkey", "gp2")
+        pvc = manifests["pvc"]
+        deploy = manifests["deployment"]
         # Set necessary labels, etc. on the Deployment
         labels = deploy["metadata"].setdefault("labels", {})
         labels["ocs-monkey/controller"] = "exponential"
@@ -89,6 +131,10 @@ class ExponentialDeployment(Event):
         print('New deployment:',
               f'{deploy["metadata"]["namespace"]}',
               f'{deploy["metadata"]["name"]}')
+        core_v1 = k8s.CoreV1Api()
+        kube.call(core_v1.create_namespaced_persistent_volume_claim,
+                  namespace=pvc["metadata"]["namespace"],
+                  body=pvc)
         apps_v1 = k8s.AppsV1Api()
         kube.call(apps_v1.create_namespaced_deployment,
                   namespace=deploy["metadata"]["namespace"],
@@ -96,24 +142,32 @@ class ExponentialDeployment(Event):
         return [
             DeploymentDestroyer(when=destroy_time,
                                 namespace=deploy["metadata"]["namespace"],
-                                name=deploy["metadata"]["name"]),
+                                deployment=deploy["metadata"]["name"],
+                                pvc=pvc["metadata"]["name"]),
             ExponentialDeployment(self._interarrival, self._lifetime,
-                                  self._active, self._idle, self._deployment)
+                                  self._active, self._idle)
         ]
 
 class DeploymentDestroyer(Event):
     """Destroy a Deployment at some time in the future."""
 
-    def __init__(self, when: float, namespace: str, name: str):
+    def __init__(self, when: float, namespace: str, deployment: str, pvc: str):
         self._namespace = namespace
-        self._name = name
+        self._deployment = deployment
+        self._pvc = pvc
         super().__init__(when)
 
     def execute(self) -> 'List[Event]':
-        print(f"Smackdown! {self._namespace}/{self._name}")
+        print(f"Smackdown! {self._namespace}/{self._deployment}")
         apps_v1 = k8s.AppsV1Api()
         kube.call(apps_v1.delete_namespaced_deployment,
-                  name=self._name,
+                  name=self._deployment,
                   namespace=self._namespace,
                   body=k8s.V1DeleteOptions())
+        core_v1 = k8s.CoreV1Api()
+        kube.call(core_v1.delete_namespaced_persistent_volume_claim,
+                  namespace=self._namespace,
+                  name=self._pvc,
+                  body=k8s.V1DeleteOptions())
+
         return []
