@@ -48,6 +48,13 @@ def _get_workload(ns_name: str, sc_name: str) -> Dict[str, kube.MANIFEST]:
                         "name": "busybox",
                         "image": "busybox",
                         "command": ["sleep", "99999"],
+                        "readinessProbe": {
+                            "exec": {
+                                "command": ["touch", "/mnt/writable"]
+                            },
+                            "initialDelaySeconds": 5,
+                            "periodSeconds": 10
+                        },
                         "volumeMounts": [{
                             "name": "data",
                             "mountPath": "/mnt"
@@ -125,7 +132,7 @@ class ExponentialDeployment(Event):
     def execute(self) -> 'List[Event]':
         """Create a new Deployment & schedule it's destruction."""
         destroy_time = time.time() + random.expovariate(1/self._lifetime)
-        manifests = _get_workload("monkey", "gp2")
+        manifests = _get_workload("monkey", "csi-rbd")
         pvc = manifests["pvc"]
         deploy = manifests["deployment"]
         # Set necessary labels, etc. on the Deployment
@@ -147,34 +154,51 @@ class ExponentialDeployment(Event):
                   namespace=deploy["metadata"]["namespace"],
                   body=deploy)
         return [
-            DeploymentDestroyer(when=destroy_time,
-                                namespace=deploy["metadata"]["namespace"],
-                                deployment=deploy["metadata"]["name"],
-                                pvc=pvc["metadata"]["name"]),
+            Destroyer(when=destroy_time,
+                      objects=[{
+                          "api_fn": apps_v1.delete_namespaced_deployment,
+                          "name": deploy["metadata"]["name"],
+                          "namespace": deploy["metadata"]["namespace"]
+                      }, {
+                          "api_fn": core_v1.delete_namespaced_persistent_volume_claim,
+                          "name": pvc["metadata"]["name"],
+                          "namespace": pvc["metadata"]["namespace"]
+                      }]),
             ExponentialDeployment(self._interarrival, self._lifetime,
                                   self._active, self._idle)
         ]
 
-class DeploymentDestroyer(Event):
-    """Destroy a Deployment at some time in the future."""
+class Destroyer(Event):
+    """Destroy a set of kube objects at a fixed time."""
 
-    def __init__(self, when: float, namespace: str, deployment: str, pvc: str):
-        self._namespace = namespace
-        self._deployment = deployment
-        self._pvc = pvc
+    def __init__(self, when: float, objects: List[Dict[str, Any]]) -> None:
+        """
+        Schedule destruction of 1 or more kube objects.
+
+        Parameters:
+            when: When to destroy them
+            objects: A list of the objects to delete
+
+        Each element of the `objects` list is a dict with the following fields:
+            api_fn: The delete function to call (e.g.,
+                apps_v1.delete_namespaced_deployment)
+            name: The name of the resource to delete
+            namespace: The namespace of the resource (for namespaced objects)
+
+        """
+        self._objects = objects
         super().__init__(when)
 
-    def execute(self) -> 'List[Event]':
-        print(f"Smackdown! {self._namespace}/{self._deployment}")
-        apps_v1 = k8s.AppsV1Api()
-        kube.call(apps_v1.delete_namespaced_deployment,
-                  name=self._deployment,
-                  namespace=self._namespace,
-                  body=k8s.V1DeleteOptions())
-        core_v1 = k8s.CoreV1Api()
-        kube.call(core_v1.delete_namespaced_persistent_volume_claim,
-                  namespace=self._namespace,
-                  name=self._pvc,
-                  body=k8s.V1DeleteOptions())
-
+    def execute(self) -> List[Event]:
+        """Perform the delete."""
+        for obj in self._objects:
+            if obj.get("namespace"):
+                kube.call(obj["api_fn"],
+                          namespace=obj["namespace"],
+                          name=obj["name"],
+                          body=k8s.V1DeleteOptions())
+            else:
+                kube.call(obj["api_fn"],
+                          name=obj["name"],
+                          body=k8s.V1DeleteOptions())
         return []

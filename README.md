@@ -15,7 +15,7 @@ KUBECONFIG=/path/to/your/kubeconfig runner.py
 
 Currently, lots of things are hard coded:
 - The namespace used: `monkey`
-- The StorageClass: `gp2`
+- The StorageClass: `csi-rbd`
 - The creation & lifetimes of the Deployments
 
 There is also no monitoring to ensure the pods start/function as intended.
