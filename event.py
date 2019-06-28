@@ -174,7 +174,7 @@ class OneShot(Event):
         return []
 
 
-class Periodic(Event):  # xpylint: disable=too-few-public-methods
+class Periodic(Event):
     """An event that fires at a constant rate."""
 
     # The action function must be a list to work around 2 issues:
