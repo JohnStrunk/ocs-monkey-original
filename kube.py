@@ -57,6 +57,16 @@ def call(api: 'Callable[..., Any]', *args: Any, **kwargs: Any) -> MANIFEST:
     return dict(result.to_dict())
 
 def create_namespace(name: str) -> MANIFEST:
+    """
+    Create a namespace.
+
+    Parameters:
+        name: The name for the namespace to create
+
+    Returns:
+        A dict describing the  namespace that was created
+
+    """
     body = {
         "metadata": {
             "name": name
