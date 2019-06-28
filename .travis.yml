@@ -1,0 +1,8 @@
+---
+
+dist: xenial
+language: python
+install:
+  - pip install tox
+script:
+  - tox
