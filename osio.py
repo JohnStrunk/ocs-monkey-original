@@ -1,11 +1,17 @@
 """
 Randomized workload generator to mimic OSIO.
 
-The workload can be started by instantiating a single Event of type
-ExponentialDeployment.
+The workload can be started by instantiating a single Event of type Creator. The
+Creator event re-queues itself indefinitiely to cause Workload deployments to be
+repeatedly created according to a random distribution. For each Deployment (and
+associated resources) that it creates, it schedules a Lifecycle Event to manage
+the lifecycle of that workload instance. Lifecycle handles all milestones/phase
+transitions for the workload. It also monitors the workload's health. The final
+task of the Lifecycle event is to destroy the workload's resources.
 """
 
 
+import logging
 import random
 import time
 from typing import Any, Callable, Dict, List  # pylint: disable=unused-import
@@ -14,6 +20,23 @@ import kubernetes.client as k8s
 
 import kube
 from event import Event
+
+LOGGER = logging.getLogger(__name__)
+
+def start(interarrival: float,
+          lifetime: float,
+          active: float,
+          idle: float) -> Event:
+    """Start the workload."""
+    print("Avg # of deployments (life/interrarival):", lifetime/interarrival)
+    print("Pct of deployments active (active/(active+idle)):",
+          active/(active+idle))
+    print("Transitions per deployment (2(active+idle)/lifetime):",
+          2*(active+idle)/lifetime)
+    LOGGER.info("starting run iat:%f life:%f active:%f idle:%f",
+                interarrival, lifetime, active, idle)
+    return Creator(interarrival=interarrival, lifetime=lifetime, active=active,
+                   idle=idle)
 
 def _get_workload(ns_name: str, sc_name: str) -> Dict[str, kube.MANIFEST]:
     """
@@ -29,6 +52,9 @@ def _get_workload(ns_name: str, sc_name: str) -> Dict[str, kube.MANIFEST]:
         "metadata": {
             "name": f"osio-worker-{unique_id}",
             "namespace": ns_name,
+            "labels": {
+                "ocs-monkey/controller": "osio"
+            }
         },
         "spec": {
             "replicas": 1,
@@ -88,7 +114,7 @@ def _get_workload(ns_name: str, sc_name: str) -> Dict[str, kube.MANIFEST]:
     }
     return manifests
 
-class ExponentialDeployment(Event):
+class Creator(Event):
     """
     Create Expontitially distributed Deployments.
 
@@ -133,18 +159,20 @@ class ExponentialDeployment(Event):
         """Create a new Deployment & schedule it's destruction."""
         destroy_time = time.time() + random.expovariate(1/self._lifetime)
         manifests = _get_workload("monkey", "csi-rbd")
+        # manifests = _get_workload("monkey2", "gp2")
         pvc = manifests["pvc"]
         deploy = manifests["deployment"]
-        # Set necessary labels, etc. on the Deployment
-        labels = deploy["metadata"].setdefault("labels", {})
-        labels["ocs-monkey/controller"] = "exponential"
-        labels["ocs-monkey/exponential-active"] = str(self._active)
-        labels["ocs-monkey/exponential-idle"] = str(self._idle)
-        labels["ocs-monkey/destroy-at"] = str(destroy_time)
-        deploy["metadata"]["labels"] = labels
-        print('New deployment:',
-              f'{deploy["metadata"]["namespace"]}',
-              f'{deploy["metadata"]["name"]}')
+        # Set necessary accotations on the Deployment
+        anno = deploy["metadata"].setdefault("annotations", {})
+        anno["ocs-monkey/osio-active"] = str(self._active)
+        anno["ocs-monkey/osio-idle"] = str(self._idle)
+        anno["ocs-monkey/osio-destroy-at"] = str(destroy_time)
+        anno["ocs-monkey/osio-pvc"] = pvc["metadata"]["name"]
+        deploy["metadata"]["annotations"] = anno
+        LOGGER.info("Create: %s/%s, %s",
+                    deploy["metadata"]["namespace"],
+                    deploy["metadata"]["name"],
+                    pvc["metadata"]["name"])
         core_v1 = k8s.CoreV1Api()
         kube.call(core_v1.create_namespaced_persistent_volume_claim,
                   namespace=pvc["metadata"]["namespace"],
@@ -154,51 +182,145 @@ class ExponentialDeployment(Event):
                   namespace=deploy["metadata"]["namespace"],
                   body=deploy)
         return [
-            Destroyer(when=destroy_time,
-                      objects=[{
-                          "api_fn": apps_v1.delete_namespaced_deployment,
-                          "name": deploy["metadata"]["name"],
-                          "namespace": deploy["metadata"]["namespace"]
-                      }, {
-                          "api_fn": core_v1.delete_namespaced_persistent_volume_claim,
-                          "name": pvc["metadata"]["name"],
-                          "namespace": pvc["metadata"]["namespace"]
-                      }]),
-            ExponentialDeployment(self._interarrival, self._lifetime,
-                                  self._active, self._idle)
+            Lifecycle(when=0,  # execute asap
+                      namespace=deploy["metadata"]["namespace"],
+                      name=deploy["metadata"]["name"],
+                      ),
+            Creator(self._interarrival, self._lifetime, self._active,
+                    self._idle)
         ]
 
-class Destroyer(Event):
-    """Destroy a set of kube objects at a fixed time."""
+class Lifecycle(Event):
+    """Manage the lifecycle of a workload instance."""
 
-    def __init__(self, when: float, objects: List[Dict[str, Any]]) -> None:
+    _health_interval = 10  # When already running
+    _health_interval_initial = 60  # When pod starting
+
+    def __init__(self, when: float, namespace: str, name: str) -> None:
         """
-        Schedule destruction of 1 or more kube objects.
+        Create a lifecycle event.
 
         Parameters:
-            when: When to destroy them
-            objects: A list of the objects to delete
-
-        Each element of the `objects` list is a dict with the following fields:
-            api_fn: The delete function to call (e.g.,
-                apps_v1.delete_namespaced_deployment)
-            name: The name of the resource to delete
-            namespace: The namespace of the resource (for namespaced objects)
+            when: The time the event should execute
+            namespace: The namespace of the workload's Deployment
+            name: The name of the workload's Deployment
 
         """
-        self._objects = objects
+        self._namespace = namespace
+        self._name = name
         super().__init__(when)
 
+    def _get_deployment(self) -> kube.MANIFEST:
+        apps_v1 = k8s.AppsV1Api()
+        v1dl = kube.call(apps_v1.list_namespaced_deployment,
+                         namespace=self._namespace,
+                         field_selector=f'metadata.name={self._name}')
+        return v1dl["items"][0]  # type: ignore
+
+    def _action_initialize(self, deploy: kube.MANIFEST) -> kube.MANIFEST:
+        anno = deploy["metadata"]["annotations"]
+        idle_mean = float(anno["ocs-monkey/osio-idle"])
+        idle_time = time.time() + random.expovariate(1/idle_mean)
+        anno["ocs-monkey/osio-idle-at"] = str(idle_time)
+        health_time = time.time() + self._health_interval_initial
+        anno["ocs-monkey/osio-health-at"] = str(health_time)
+        return deploy
+
+    def _action_destroy(self, deploy: kube.MANIFEST) -> None:
+        anno = deploy["metadata"]["annotations"]
+        pvc_name = anno["ocs-monkey/osio-pvc"]
+        LOGGER.info("Destroy: %s/%s, %s",
+                    self._namespace,
+                    self._name,
+                    pvc_name)
+        apps_v1 = k8s.AppsV1Api()
+        kube.call(apps_v1.delete_namespaced_deployment,
+                  namespace=self._namespace,
+                  name=self._name,
+                  body=k8s.V1DeleteOptions())
+        core_v1 = k8s.CoreV1Api()
+        kube.call(core_v1.delete_namespaced_persistent_volume_claim,
+                  namespace=self._namespace,
+                  name=pvc_name,
+                  body=k8s.V1DeleteOptions())
+
+    def _action_health(self, deploy: kube.MANIFEST) -> kube.MANIFEST:
+        if deploy["spec"]["replicas"] == 1:  # active
+            if deploy["status"].get("ready_replicas") != 1:
+                LOGGER.warning("Unhealthy: %s/%s", self._namespace, self._name)
+        anno = deploy["metadata"]["annotations"]
+        health_time = time.time() + self._health_interval
+        anno["ocs-monkey/osio-health-at"] = str(health_time)
+        return deploy
+
+    def _action_idle(self, deploy: kube.MANIFEST) -> kube.MANIFEST:
+        anno = deploy["metadata"]["annotations"]
+        if deploy["spec"]["replicas"] == 0:  # idle -> active
+            deploy["spec"]["replicas"] = 1
+            active_mean = float(anno["ocs-monkey/osio-active"])
+            idle_time = time.time() + random.expovariate(1/active_mean)
+            health_time = time.time() + self._health_interval_initial
+            LOGGER.info("idle->active: %s/%s", self._namespace, self._name)
+        else:  # active -> idle
+            deploy["spec"]["replicas"] = 0
+            idle_mean = float(anno["ocs-monkey/osio-idle"])
+            idle_time = time.time() + random.expovariate(1/idle_mean)
+            health_time = time.time() + self._health_interval
+            LOGGER.info("active->idle: %s/%s", self._namespace, self._name)
+        anno["ocs-monkey/osio-idle-at"] = str(idle_time)
+        anno["ocs-monkey/osio-health-at"] = str(health_time)
+        return deploy
+
+    def _update_and_schedule(self, deploy: kube.MANIFEST) -> List[Event]:
+        """
+        Update (patch) the Deployment and schedule the next Event.
+
+        This assumes proper changes have been made to the Deployment manifest
+        and the next times for each lifecycle event have been set in the proper
+        annotation.
+        """
+        anno = deploy["metadata"]["annotations"]
+        destroy_time = float(anno["ocs-monkey/osio-destroy-at"])
+        idle_time = float(anno["ocs-monkey/osio-idle-at"])
+        health_time = float(anno["ocs-monkey/osio-health-at"])
+        next_time = min(destroy_time, idle_time, health_time)
+        anno["ocs-monkey/osio-next-time"] = str(next_time)
+        if next_time == destroy_time:
+            anno["ocs-monkey/osio-next-action"] = "destroy"
+        elif next_time == idle_time:
+            anno["ocs-monkey/osio-next-action"] = "idle"
+        else:
+            anno["ocs-monkey/osio-next-action"] = "health"
+        apps_v1 = k8s.AppsV1Api()
+        kube.call(apps_v1.patch_namespaced_deployment,
+                  namespace=self._namespace,
+                  name=self._name,
+                  body=deploy)
+        return [Lifecycle(next_time, self._namespace, self._name)]
+
     def execute(self) -> List[Event]:
-        """Perform the delete."""
-        for obj in self._objects:
-            if obj.get("namespace"):
-                kube.call(obj["api_fn"],
-                          namespace=obj["namespace"],
-                          name=obj["name"],
-                          body=k8s.V1DeleteOptions())
-            else:
-                kube.call(obj["api_fn"],
-                          name=obj["name"],
-                          body=k8s.V1DeleteOptions())
-        return []
+        """Execute the lifecycle event."""
+        # Retrieve the Deployment object
+        deploy = self._get_deployment()
+        anno = deploy["metadata"].setdefault("annotations", {})
+        # If lifecycle annotations are missing, initialize them
+        if "ocs-monkey/osio-next-action" not in anno:
+            deploy = self._action_initialize(deploy)
+            return self._update_and_schedule(deploy)
+
+        etime = float(anno["ocs-monkey/osio-next-time"])
+        if etime > time.time():  # we ran too early... reschedule
+            return [Lifecycle(etime, self._namespace, self._name)]
+
+        # Lifecycle actions
+        eaction = anno["ocs-monkey/osio-next-action"]
+        if eaction == "destroy":
+            self._action_destroy(deploy)
+            return []  # Stop here since we destroyed the resources
+        if eaction == "health":
+            self._action_health(deploy)
+        elif eaction == "idle":
+            self._action_idle(deploy)
+        else:
+            assert False, f'Unknown next action: {eaction}'
+        return self._update_and_schedule(deploy)
