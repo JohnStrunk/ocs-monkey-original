@@ -3,6 +3,8 @@
 VENV_NAME=venv
 
 python3 -m venv "$VENV_NAME"
+
+# shellcheck disable=SC1090
 source "$VENV_NAME/bin/activate"
 
 pip install --upgrade pip
