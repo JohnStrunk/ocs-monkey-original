@@ -13,5 +13,4 @@ install:
   - travis_retry gem install asciidoctor mdl
   - travis_retry pip install yamllint tox
 script:
-  - .travis/pre-commit.sh --require-all
-  - tox
+  - tox -v
