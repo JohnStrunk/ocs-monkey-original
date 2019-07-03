@@ -1,9 +1,17 @@
 ---
 
 dist: xenial
+addons:
+  apt:
+    packages:
+      - realpath
+      - ruby
+      - shellcheck
 language: python
 python: 3.7
 install:
-  - pip install tox
+  - travis_retry gem install asciidoctor mdl
+  - travis_retry pip install yamllint tox
 script:
+  - .travis/pre-commit.sh --require-all
   - tox
