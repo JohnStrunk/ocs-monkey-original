@@ -4,18 +4,14 @@
 
 This repo is designed to provide a randomized load for "chaos testing".
 
+## Status
+
+Prioritization & project work are tracked in [Work
+items](https://github.com/JohnStrunk/ocs-monkey/projects/1)
+
 ## Usage
 
 ```
 source setup-env.sh
 KUBECONFIG=/path/to/your/kubeconfig runner.py
 ```
-
-## Status
-
-Currently, lots of things are hard coded:
-- The namespace used: `monkey`
-- The StorageClass: `csi-rbd`
-- The creation & lifetimes of the Deployments
-
-There is also no monitoring to ensure the pods start/function as intended.
