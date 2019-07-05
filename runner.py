@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""Run the randomized workload."""
-
+"""Starts the randomized workload generator."""
 
 import logging
 
@@ -13,14 +12,19 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s %(name)s - %(levelname)s - %(message)s")
     ns_name = "monkey"
-    kube.create_namespace(ns_name)
+    sc_name = "rbd-csi"
+    access_mode = "ReadWriteOnce"
+    kube.create_namespace(ns_name, existing_ok=True)
 
-    dispatcher = event.Dispatcher()
-    dispatcher.add(osio.start(interarrival=10,
-                              lifetime=300,
-                              active=60,
-                              idle=30))
-    dispatcher.run()
+    dispatch = event.Dispatcher()
+    dispatch.add(osio.start(namespace=ns_name,
+                            storage_class=sc_name,
+                            access_mode=access_mode,
+                            interarrival=10,
+                            lifetime=300,
+                            active=60,
+                            idle=30))
+    dispatch.run()
 
 if __name__ == '__main__':
     main()
