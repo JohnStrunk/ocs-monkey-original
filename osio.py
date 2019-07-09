@@ -52,13 +52,14 @@ def start(namespace: str,  # pylint: disable=too-many-arguments
         into the Dispatcher.
 
     """
-    print("Avg # of deployments (life/interrarival):", lifetime/interarrival)
-    print("Pct of deployments active (active/(active+idle)):",
-          active/(active+idle))
-    print("Transitions per deployment (2(active+idle)/lifetime):",
-          2*(active+idle)/lifetime)
-    LOGGER.info("starting run iat:%f life:%f active:%f idle:%f",
+    LOGGER.info("starting run iat:%.1f life:%.1f active:%.1f idle:%.1f",
                 interarrival, lifetime, active, idle)
+    LOGGER.info("namespace: %s", namespace)
+    LOGGER.info("storageclass: %s", storage_class)
+    LOGGER.info("pvc access mode: %s", access_mode)
+    LOGGER.info("Average # of deployments: %.1f", lifetime/interarrival)
+    LOGGER.info("Fraction of deployments active: %.2f", active/(active+idle))
+    LOGGER.info("Transitions per deployment: %.1f", 2*(active+idle)/lifetime)
     return Creator(namespace=namespace,
                    storage_class=storage_class,
                    access_mode=access_mode,
