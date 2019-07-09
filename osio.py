@@ -23,22 +23,54 @@ from event import Event
 
 LOGGER = logging.getLogger(__name__)
 
-def start(interarrival: float,
+def start(namespace: str,  # pylint: disable=too-many-arguments
+          storage_class: str,
+          access_mode: str,
+          interarrival: float,
           lifetime: float,
           active: float,
           idle: float) -> Event:
-    """Start the workload."""
-    print("Avg # of deployments (life/interrarival):", lifetime/interarrival)
-    print("Pct of deployments active (active/(active+idle)):",
-          active/(active+idle))
-    print("Transitions per deployment (2(active+idle)/lifetime):",
-          2*(active+idle)/lifetime)
-    LOGGER.info("starting run iat:%f life:%f active:%f idle:%f",
+    """
+    Start the workload.
+
+    Parameters:
+        namespace: The namespace where objects should be placed/managed
+        storage_class: The StorageClass name to use in PVCs
+        access_mode: The access mode to request for the PVC. Available options:
+            ReadWriteOnce, ReadWriteMany
+        interarrival: The mean interarrival time (in seconds) for creating new
+            workloads
+        lifetime: The mean lifetime (in seconds) of a Deployment once it has
+            been created.
+        active: The mean active time for the Deployment's pod before it
+            becomes idle.
+        idle: The mean idle time for the Deployment before it becomes
+            active.
+
+    Returns:
+        The initial Event that starts the workload. This Event should be queued
+        into the Dispatcher.
+
+    """
+    LOGGER.info("starting run iat:%.1f life:%.1f active:%.1f idle:%.1f",
                 interarrival, lifetime, active, idle)
-    return Creator(interarrival=interarrival, lifetime=lifetime, active=active,
+    LOGGER.info("namespace: %s", namespace)
+    LOGGER.info("storageclass: %s", storage_class)
+    LOGGER.info("pvc access mode: %s", access_mode)
+    LOGGER.info("Average # of deployments: %.1f", lifetime/interarrival)
+    LOGGER.info("Fraction of deployments active: %.2f", active/(active+idle))
+    LOGGER.info("Transitions per deployment: %.1f", 2*(active+idle)/lifetime)
+    return Creator(namespace=namespace,
+                   storage_class=storage_class,
+                   access_mode=access_mode,
+                   interarrival=interarrival,
+                   lifetime=lifetime,
+                   active=active,
                    idle=idle)
 
-def _get_workload(ns_name: str, sc_name: str) -> Dict[str, kube.MANIFEST]:
+def _get_workload(ns_name: str,
+                  sc_name: str,
+                  access_mode: str) -> Dict[str, kube.MANIFEST]:
     """
     Generate a workload description.
 
@@ -103,7 +135,7 @@ def _get_workload(ns_name: str, sc_name: str) -> Dict[str, kube.MANIFEST]:
             "namespace": ns_name
         },
         "spec": {
-            "accessModes": ["ReadWriteOnce"],
+            "accessModes": [access_mode],
             "resources": {
                 "requests": {
                     "storage": "1Gi"
@@ -125,7 +157,10 @@ class Creator(Event):
 
     """
 
-    def __init__(self,
+    def __init__(self,  # pylint: disable=too-many-arguments
+                 namespace: str,
+                 storage_class: str,
+                 access_mode: str,
                  interarrival: float,
                  lifetime: float,
                  active: float,
@@ -136,18 +171,10 @@ class Creator(Event):
         Given some mean interarrival time, a, and lifetime, l, the average
         number of Deployments that would be expected to exist is (l/a) according
         to Little's Law.
-
-        Parameters:
-            interarrival: The mean interrarival time (seconds) between
-                Deployment creations.
-            lifetime: The mean lifetime (in seconds) of a Deployment once it has
-                been created.
-            active: The mean active time for the Deployment's pod before it
-                becomes idle.
-            idle: The mean idle time for the Deployment before it becomes
-                active.
-
         """
+        self._namespace = namespace
+        self._storage_class = storage_class
+        self._access_mode = access_mode
         self._interarrival = interarrival
         self._lifetime = lifetime
         self._active = active
@@ -158,8 +185,8 @@ class Creator(Event):
     def execute(self) -> 'List[Event]':
         """Create a new Deployment & schedule it's destruction."""
         destroy_time = time.time() + random.expovariate(1/self._lifetime)
-        manifests = _get_workload("monkey", "csi-rbd")
-        # manifests = _get_workload("monkey2", "gp2")
+        manifests = _get_workload(self._namespace, self._storage_class,
+                                  self._access_mode)
         pvc = manifests["pvc"]
         deploy = manifests["deployment"]
         # Set necessary accotations on the Deployment
@@ -186,7 +213,12 @@ class Creator(Event):
                       namespace=deploy["metadata"]["namespace"],
                       name=deploy["metadata"]["name"],
                       ),
-            Creator(self._interarrival, self._lifetime, self._active,
+            Creator(self._namespace,
+                    self._storage_class,
+                    self._access_mode,
+                    self._interarrival,
+                    self._lifetime,
+                    self._active,
                     self._idle)
         ]
 
