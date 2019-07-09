@@ -1,7 +1,5 @@
 kubernetes
-flake8
 mypy
-pydocstyle
 pylint
 pytest
 pytest-benchmark

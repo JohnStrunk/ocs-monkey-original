@@ -56,15 +56,16 @@ def call(api: 'Callable[..., Any]', *args: Any, **kwargs: Any) -> MANIFEST:
             raise
     return dict(result.to_dict())
 
-def create_namespace(name: str) -> MANIFEST:
+def create_namespace(name: str, existing_ok: bool = False) -> MANIFEST:
     """
     Create a namespace.
 
     Parameters:
         name: The name for the namespace to create
+        existing_ok: True if it is ok for the namespace to already exist
 
     Returns:
-        A dict describing the  namespace that was created
+        A dict describing the namespace that was created
 
     """
     body = {
@@ -73,4 +74,12 @@ def create_namespace(name: str) -> MANIFEST:
         }
     }
     core_v1 = k8s.CoreV1Api()
-    return call(core_v1.create_namespace, body=body)
+    try:
+        return call(core_v1.create_namespace, body=body)
+    except ApiException as ex:
+        if ex.status != 409 or not existing_ok:
+            raise
+
+    ns_list = call(core_v1.list_namespace,
+                   field_selector=f'metadata.name={name}')
+    return ns_list["items"][0]  # type: ignore
