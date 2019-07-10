@@ -19,7 +19,7 @@ def main() -> None:
                         type=str,
                         help="Namespace to use for the workload")
     parser.add_argument("-s", "--storageclass",
-                        default="rbd-csi",
+                        default="csi-rbd",
                         type=str,
                         help="StorageClassName for the workload's PVCs")
     parser.add_argument("-m", "--accessmode",
