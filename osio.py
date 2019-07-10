@@ -23,6 +23,22 @@ from event import Event
 
 LOGGER = logging.getLogger(__name__)
 
+class UnhealthyDeployment(Exception):
+    """Exception raised when a workload instance fails its health check.
+
+    Attributes:
+        namespace: The namespace that contains the pod
+        name: The name of the Deployment
+
+    """
+
+    def __init__(self, namespace: str, name: str):
+        """Create an exception for an unhealthy Deployment instance."""
+        self.namespace = namespace
+        self.name = name
+        super().__init__(self, namespace, name)
+
+
 def start(namespace: str,  # pylint: disable=too-many-arguments
           storage_class: str,
           access_mode: str,
@@ -279,7 +295,8 @@ class Lifecycle(Event):
     def _action_health(self, deploy: kube.MANIFEST) -> kube.MANIFEST:
         if deploy["spec"]["replicas"] == 1:  # active
             if deploy["status"].get("ready_replicas") != 1:
-                LOGGER.warning("Unhealthy: %s/%s", self._namespace, self._name)
+                LOGGER.error("Unhealthy: %s/%s", self._namespace, self._name)
+                raise UnhealthyDeployment(self._namespace, self._name)
         anno = deploy["metadata"]["annotations"]
         health_time = time.time() + self._health_interval
         anno["ocs-monkey/osio-health-at"] = str(health_time)
