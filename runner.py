@@ -3,46 +3,129 @@
 
 import argparse
 import logging
+import os
+import subprocess
+import time
 
 import event
+import log_gather
 import osio
 import kube
 
+CLI_ARGS: argparse.Namespace
+RUN_ID = time.perf_counter_ns()
+
+# pylint: disable=too-few-public-methods
+class MustGather(log_gather.Collector):
+    """Log collector that runs must-gather."""
+
+    def __init__(self) -> None:
+        """Create a log-collector using must-gather."""
+        super().__init__("must-gather")
+    def gather(self, path: str) -> bool:
+        """Run must-gather and notify of success."""
+        mg_dir = os.path.join(path, 'must-gather')
+        completed = subprocess.run(f'{CLI_ARGS.oc} adm must-gather'
+                                   f' --dest-dir {mg_dir}', shell=True)
+        return completed.returncode == 0
+
+class OcsMustGather(log_gather.Collector):
+    """Log collector that runs ocs-must-gather."""
+
+    def __init__(self) -> None:
+        """Create a log-collector using ocs-must-gather."""
+        super().__init__("OCS must-gather")
+    def gather(self, path: str) -> bool:
+        """Run must-gather and notify of success."""
+        mg_dir = os.path.join(path, 'ocs-must-gather')
+        completed = subprocess.run(f'{CLI_ARGS.oc} adm must-gather'
+                                   f' --image=ashishranjan738/ocs-must-gather'
+                                   f' --dest-dir {mg_dir}', shell=True)
+        return completed.returncode == 0
+
+class OcsImageVersions(log_gather.Collector):
+    """Grab the images & tags from the OCS namespace."""
+
+    def __init__(self, ocs_namespace: str) -> None:
+        """Create a log-collector that scrapes images tags."""
+        self._ns = ocs_namespace
+        super().__init__("OCS image versions")
+    def gather(self, path: str) -> bool:
+        """Scrape the names of the pod images."""
+        completed = subprocess.run(f'{CLI_ARGS.oc} -n {self._ns} get po -oyaml'
+                                   ' | grep image: | sort -u '
+                                   f'> {path}/ocs_images.log', shell=True)
+        return completed.returncode == 0
+
 def main() -> None:
     """Run the workload."""
-    logging.basicConfig(level=logging.INFO,
-                        format="%(asctime)s %(name)s - %(levelname)s - %(message)s")
-
     parser = argparse.ArgumentParser()
-    parser.add_argument("-n", "--namespace",
-                        default="ocs-monkey",
+    parser.add_argument("-l", "--log-dir",
+                        default=os.getcwd(),
                         type=str,
-                        help="Namespace to use for the workload")
-    parser.add_argument("-s", "--storageclass",
-                        default="csi-rbd",
-                        type=str,
-                        help="StorageClassName for the workload's PVCs")
+                        help="Path to use for log files")
     parser.add_argument("-m", "--accessmode",
                         default="ReadWriteOnce",
                         type=str, choices=["ReadWriteOnce", "ReadWriteMany"],
                         help="StorageClassName for the workload's PVCs")
-    args = parser.parse_args()
+    parser.add_argument("-n", "--namespace",
+                        default="ocs-monkey",
+                        type=str,
+                        help="Namespace to use for the workload")
+    parser.add_argument("--oc",
+                        default="oc",
+                        type=str,
+                        help="Path/executable for the oc command")
+    parser.add_argument("--ocs-namespace",
+                        default="rook-ceph",
+                        type=str,
+                        help="Namespace where the OCS components are running")
+    parser.add_argument("-s", "--storageclass",
+                        default="csi-rbd",
+                        type=str,
+                        help="StorageClassName for the workload's PVCs")
+    global CLI_ARGS  # pylint: disable=global-statement
+    CLI_ARGS = parser.parse_args()
 
-    ns_name = args.namespace
-    sc_name = args.storageclass
-    access_mode = args.accessmode
+    log_dir = os.path.join(CLI_ARGS.log_dir, f'ocs-monkey-{RUN_ID}')
+    os.mkdir(log_dir)
 
-    kube.create_namespace(ns_name, existing_ok=True)
+    handlers = [
+        logging.FileHandler(os.path.join(log_dir, "runner.log")),
+        logging.StreamHandler()
+    ]
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
+    formatter = \
+        logging.Formatter("%(asctime)s %(name)s - %(levelname)s - %(message)s")
+    for handler in handlers:
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+
+    logging.info("starting execution-- run id: %d", RUN_ID)
+    logging.info("program arguments: %s", CLI_ARGS)
+    logging.info("log directory: %s", log_dir)
+
+    # register log collector(s)
+    log_gather.add(OcsMustGather())
+    # log_gather.add(MustGather())
+    log_gather.add(OcsImageVersions(CLI_ARGS.ocs_namespace))
+
+    kube.create_namespace(CLI_ARGS.namespace, existing_ok=True)
 
     dispatch = event.Dispatcher()
-    dispatch.add(osio.start(namespace=ns_name,
-                            storage_class=sc_name,
-                            access_mode=access_mode,
+    dispatch.add(osio.start(namespace=CLI_ARGS.namespace,
+                            storage_class=CLI_ARGS.storageclass,
+                            access_mode=CLI_ARGS.accessmode,
                             interarrival=10,
                             lifetime=300,
                             active=60,
                             idle=30))
-    dispatch.run()
+    try:
+        dispatch.run()
+    except osio.UnhealthyDeployment:
+        logging.info("starting log collection")
+        log_gather.gather(log_dir)
 
 if __name__ == '__main__':
     main()
