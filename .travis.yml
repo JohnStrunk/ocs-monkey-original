@@ -12,9 +12,12 @@ env:
     - CHANGE_MINIKUBE_NONE_USER=true
     - KUBECONFIG=$HOME/.kube/config
     - KUBE_VERSION="1.15.0"
+    # Repo for the OSIO workload generator
+    - WORKLOAD_REPO=quay.io/johnstrunk/osio-workload
 addons:
   apt:
     packages:
+      - docker-ce
       - realpath
       - ruby
       - shellcheck
@@ -40,3 +43,23 @@ jobs:
         - JSONPATH='{range .items[*]}{@.metadata.name}:{range @.status.conditions[*]}{@.type}={@.status};{end}{end}'; until kubectl -n kube-system get pods -lk8s-app=kube-dns -o jsonpath="$JSONPATH" 2>&1 | grep -q "Ready=True"; do sleep 1;echo "waiting for kube-dns to be available"; kubectl get pods --all-namespaces; done
       script:
         - tox -v -e py36,py36-kubetest,srclint
+    - name: OSIO workload
+      language: generic
+      script:
+        - cd osio-workload
+        - ./build.sh "${WORKLOAD_REPO}"
+        - docker inspect quay.io/johnstrunk/osio-workload
+        - cd ..
+      deploy:
+        # Master branch will push the container to :latest
+        - provider: script
+          on:  # yamllint disable-line rule:truthy
+            branch: master
+          script: .travis/push_container.sh "${WORKLOAD_REPO}" verbatim latest
+        # Tags of the form v + SEMVER (e.g., v1.2.3) will push to the
+        # corresponding container version number (e.g., :1.2.3).
+        - provider: script
+          on:  # yamllint disable-line rule:truthy
+            tags: true
+            condition: $TRAVIS_TAG =~ ^v[0-9]+
+          script: .travis/push_container.sh "${WORKLOAD_REPO}" version "$TRAVIS_TAG"
