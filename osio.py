@@ -94,7 +94,7 @@ def _get_workload(ns_name: str,
     kubernetes API.
     """
     manifests = {}
-    unique_id = str(time.perf_counter_ns())
+    unique_id = str(random.randrange(999999999))
 
     manifests["deployment"] = {
         "metadata": {
