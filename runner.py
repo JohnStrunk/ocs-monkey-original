@@ -5,7 +5,7 @@ import argparse
 import logging
 import os
 import subprocess
-import time
+import random
 
 import event
 import log_gather
@@ -13,7 +13,7 @@ import osio
 import kube
 
 CLI_ARGS: argparse.Namespace
-RUN_ID = time.perf_counter_ns()
+RUN_ID = random.randrange(999999999)
 
 # pylint: disable=too-few-public-methods
 class MustGather(log_gather.Collector):

@@ -94,7 +94,7 @@ def _get_workload(ns_name: str,
     kubernetes API.
     """
     manifests = {}
-    unique_id = str(time.perf_counter_ns())
+    unique_id = str(random.randrange(999999999))
 
     manifests["deployment"] = {
         "metadata": {
@@ -119,9 +119,9 @@ def _get_workload(ns_name: str,
                 },
                 "spec": {
                     "containers": [{
-                        "name": "busybox",
-                        "image": "busybox",
-                        "command": ["sleep", "99999"],
+                        "name": "osio-workload",
+                        "image": "quay.io/johnstrunk/osio-workload",
+                        "args": ["--untar-rate", "10", "--rm-rate", "10"],
                         "readinessProbe": {
                             "exec": {
                                 "command": ["touch", "/mnt/writable"]
@@ -154,7 +154,8 @@ def _get_workload(ns_name: str,
             "accessModes": [access_mode],
             "resources": {
                 "requests": {
-                    "storage": "1Gi"
+                    # kernel src is 656 MB * 4 slots < 3 Gi
+                    "storage": "3Gi"
                 }
             },
             "storageClassName": sc_name

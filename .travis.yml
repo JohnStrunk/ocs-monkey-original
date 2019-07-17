@@ -12,30 +12,54 @@ env:
     - CHANGE_MINIKUBE_NONE_USER=true
     - KUBECONFIG=$HOME/.kube/config
     - KUBE_VERSION="1.15.0"
+    # Repo for the OSIO workload generator
+    - WORKLOAD_REPO=quay.io/johnstrunk/osio-workload
 addons:
   apt:
     packages:
+      - docker-ce
       - realpath
       - ruby
       - shellcheck
-language: python
-python: 3.7
-install:
-  - travis_retry gem install asciidoctor mdl
-  - travis_retry pip install yamllint tox
-  # Install minikube - based on https://github.com/LiliC/travis-minikube
-  - travis_retry curl -Lo kubectl https://storage.googleapis.com/kubernetes-release/release/v${KUBE_VERSION}/bin/linux/amd64/kubectl && chmod +x kubectl && sudo mv kubectl /usr/local/bin/
-  - travis_retry curl -Lo minikube https://storage.googleapis.com/minikube/releases/v1.2.0/minikube-linux-amd64 && chmod +x minikube && sudo mv minikube /usr/local/bin/
-  - mkdir -p $HOME/.kube $HOME/.minikube
-  - touch $KUBECONFIG
-  - sudo minikube start --vm-driver=none --kubernetes-version=v${KUBE_VERSION}
-  - "sudo chown -R travis: /home/travis/.minikube/"
-before_script:
-  - kubectl cluster-info
-  - JSONPATH='{range .items[*]}{@.metadata.name}:{range @.status.conditions[*]}{@.type}={@.status};{end}{end}'; until kubectl -n kube-system get pods -lcomponent=kube-addon-manager -o jsonpath="$JSONPATH" 2>&1 | grep -q "Ready=True"; do sleep 1;echo "waiting for kube-addon-manager to be available"; kubectl get pods --all-namespaces; done
-  - JSONPATH='{range .items[*]}{@.metadata.name}:{range @.status.conditions[*]}{@.type}={@.status};{end}{end}'; until kubectl -n kube-system get pods -lk8s-app=kube-dns -o jsonpath="$JSONPATH" 2>&1 | grep -q "Ready=True"; do sleep 1;echo "waiting for kube-dns to be available"; kubectl get pods --all-namespaces; done
-script:
-  # Run the generic tests
-  - tox -v
-  # Run the tests that require access to a kubernetes cluster
-  - tox -v -e py37-kubetest
+
+jobs:
+  include:
+    - name: Workload generator
+      language: python
+      python: 3.6
+      install:
+        - travis_retry gem install asciidoctor mdl
+        - travis_retry pip install yamllint tox
+        # Install minikube - based on https://github.com/LiliC/travis-minikube
+        - travis_retry curl -Lo kubectl https://storage.googleapis.com/kubernetes-release/release/v${KUBE_VERSION}/bin/linux/amd64/kubectl && chmod +x kubectl && sudo mv kubectl /usr/local/bin/
+        - travis_retry curl -Lo minikube https://storage.googleapis.com/minikube/releases/v1.2.0/minikube-linux-amd64 && chmod +x minikube && sudo mv minikube /usr/local/bin/
+        - mkdir -p "$HOME/.kube" "$HOME/.minikube"
+        - touch "$KUBECONFIG"
+        - sudo minikube start --vm-driver=none --kubernetes-version=v${KUBE_VERSION}
+        - "sudo chown -R travis: /home/travis/.minikube/"
+      before_script:
+        - kubectl cluster-info
+        - JSONPATH='{range .items[*]}{@.metadata.name}:{range @.status.conditions[*]}{@.type}={@.status};{end}{end}'; until kubectl -n kube-system get pods -lcomponent=kube-addon-manager -o jsonpath="$JSONPATH" 2>&1 | grep -q "Ready=True"; do sleep 1;echo "waiting for kube-addon-manager to be available"; kubectl get pods --all-namespaces; done
+        - JSONPATH='{range .items[*]}{@.metadata.name}:{range @.status.conditions[*]}{@.type}={@.status};{end}{end}'; until kubectl -n kube-system get pods -lk8s-app=kube-dns -o jsonpath="$JSONPATH" 2>&1 | grep -q "Ready=True"; do sleep 1;echo "waiting for kube-dns to be available"; kubectl get pods --all-namespaces; done
+      script:
+        - tox -v -e py36,py36-kubetest,srclint
+    - name: OSIO workload
+      language: generic
+      script:
+        - cd osio-workload
+        - ./build.sh "${WORKLOAD_REPO}"
+        - docker inspect quay.io/johnstrunk/osio-workload
+        - cd ..
+      deploy:
+        # Master branch will push the container to :latest
+        - provider: script
+          on:  # yamllint disable-line rule:truthy
+            branch: master
+          script: .travis/push_container.sh "${WORKLOAD_REPO}" verbatim latest
+        # Tags of the form v + SEMVER (e.g., v1.2.3) will push to the
+        # corresponding container version number (e.g., :1.2.3).
+        - provider: script
+          on:  # yamllint disable-line rule:truthy
+            tags: true
+            condition: $TRAVIS_TAG =~ ^v[0-9]+
+          script: .travis/push_container.sh "${WORKLOAD_REPO}" version "$TRAVIS_TAG"

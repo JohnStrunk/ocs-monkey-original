@@ -1,6 +1,6 @@
 """Tests for kubernetes helper functions."""
 
-import time
+import random
 
 import kubernetes.client as k8s
 from kubernetes.client.rest import ApiException
@@ -11,7 +11,7 @@ import kube
 @pytest.mark.kube_required
 def test_create_namespace():
     """We can create a new namespace."""
-    ns_name = f"ns-{time.perf_counter_ns()}"
+    ns_name = f"ns-{random.randrange(999999999)}"
     res = kube.create_namespace(ns_name)
     assert res["metadata"]["name"] == ns_name
     _delete_namespace(ns_name)
@@ -19,7 +19,7 @@ def test_create_namespace():
 @pytest.mark.kube_required
 def test_exclusive_ns_create():
     """Namespace creation fails by default if it already exists."""
-    ns_name = f"ns-{time.perf_counter_ns()}"
+    ns_name = f"ns-{random.randrange(999999999)}"
     kube.create_namespace(ns_name)
     with pytest.raises(ApiException):
         kube.create_namespace(ns_name)
@@ -28,7 +28,7 @@ def test_exclusive_ns_create():
 @pytest.mark.kube_required
 def test_existing_ns_create():
     """Namespace creation succeeds with existing if existing_ok."""
-    ns_name = f"ns-{time.perf_counter_ns()}"
+    ns_name = f"ns-{random.randrange(999999999)}"
     res = kube.create_namespace(ns_name)
     res2 = kube.create_namespace(ns_name, existing_ok=True)
     assert res["metadata"]["name"] == ns_name
