@@ -15,16 +15,19 @@ RUN yum install -y epel-release && \
 RUN curl -sSL https://cdn.kernel.org/pub/linux/kernel/v4.x/linux-4.1.51.tar.xz > /kernel.tar.xz && \
     chmod 644 /kernel.tar.xz
 
+#-- /status is for a health marker file
 #-- /data is where the fs to test should be mounted
-RUN mkdir -p /data && \
-    chmod 777 /data
+RUN mkdir -p /data && chmod 777 /data && \
+    mkdir -p /status && chmod 777 /status
 VOLUME /data
+VOLUME /status
+
 
 #-- Set up the workload script
-COPY entry.py requirements.txt /
-RUN chmod 755 /entry.py && \
+COPY entry.sh health.sh workload.py requirements.txt /
+RUN chmod 755 /entry.sh /health.sh /workload.py && \
     pip3 install --upgrade -r requirements.txt
-ENTRYPOINT ["python3", "/entry.py"]
+ENTRYPOINT ["/entry.sh"]
 
 #-- Run as a non-root user
 RUN useradd bench-runner
