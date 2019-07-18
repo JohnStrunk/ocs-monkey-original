@@ -124,17 +124,25 @@ def _get_workload(ns_name: str,
                         "args": ["--untar-rate", "10", "--rm-rate", "10"],
                         "readinessProbe": {
                             "exec": {
-                                "command": ["touch", "/mnt/writable"]
+                                "command": ["/health.sh"]
                             },
                             "initialDelaySeconds": 5,
                             "periodSeconds": 10
                         },
                         "volumeMounts": [{
+                            "name": "temp",
+                            "mountPath": "/status"
+                        }, {
                             "name": "data",
-                            "mountPath": "/mnt"
+                            "mountPath": "/data"
                         }]
                     }],
                     "volumes": [{
+                        "name": "temp",
+                        "emptyDir": {
+                            "medium": "Memory"
+                        }
+                    }, {
                         "name": "data",
                         "persistentVolumeClaim": {
                             "claimName": f"pvc-{unique_id}"
