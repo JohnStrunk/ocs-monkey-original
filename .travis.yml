@@ -13,7 +13,7 @@ env:
     - KUBECONFIG=$HOME/.kube/config
     - KUBE_VERSION="1.15.0"
     # Repo for the OSIO workload generator
-    - WORKLOAD_REPO=quay.io/johnstrunk/osio-workload
+    - WORKLOAD_REPO=johnstrunk/osio-workload
 addons:
   apt:
     packages:
@@ -48,7 +48,7 @@ jobs:
       script:
         - cd osio-workload
         - ./build.sh "${WORKLOAD_REPO}"
-        - docker inspect quay.io/johnstrunk/osio-workload
+        - docker inspect "${WORKLOAD_REPO}"
         - cd ..
       deploy:
         # Master branch will push the container to :latest
