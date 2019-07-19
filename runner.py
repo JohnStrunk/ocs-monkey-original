@@ -114,6 +114,7 @@ def main() -> None:
     kube.create_namespace(CLI_ARGS.namespace, existing_ok=True)
 
     dispatch = event.Dispatcher()
+    dispatch.add(*osio.resume(CLI_ARGS.namespace))
     dispatch.add(osio.start(namespace=CLI_ARGS.namespace,
                             storage_class=CLI_ARGS.storageclass,
                             access_mode=CLI_ARGS.accessmode,

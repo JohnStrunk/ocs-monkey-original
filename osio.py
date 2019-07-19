@@ -84,6 +84,39 @@ def start(namespace: str,  # pylint: disable=too-many-arguments
                    active=active,
                    idle=idle)
 
+def resume(namespace: str) -> List[Event]:
+    """
+    Re-adopt deployments that were previously created.
+
+    If the workload generator exits, Deployments that were created from the
+    previous instance will still be present in the cluster. If the workload
+    generator is subsequently restarted, this function can be used to locate and
+    "adopt" those alread-present deployments, resuming their scheduled lifecycle
+    events.
+
+    Some lifecycle events may have been missed while the generator was down, but
+    they will be processed immediately once the deployments are adopted.
+
+    Parameters:
+        namespace: The namespace containing the deployments
+
+    Returns:
+        a list of Events to be enqueued onto the Dispatcher
+
+    """
+    events: List[Event] = []
+    apps_v1 = k8s.AppsV1Api()
+    deployments = kube.call(apps_v1.list_namespaced_deployment,
+                            namespace=namespace,
+                            label_selector='ocs-monkey/controller=osio')
+    for deployment in deployments["items"]:
+        LOGGER.info("Found: %s/%s", deployment["metadata"]["namespace"],
+                    deployment["metadata"]["name"])
+        events.append(Lifecycle(when=0,
+                                namespace=deployment["metadata"]["namespace"],
+                                name=deployment["metadata"]["name"]))
+    return events
+
 def _get_workload(ns_name: str,
                   sc_name: str,
                   access_mode: str) -> Dict[str, kube.MANIFEST]:
