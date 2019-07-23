@@ -25,7 +25,7 @@ import kube
 from event import Event
 
 LOGGER = logging.getLogger(__name__)
-EXECUTOR = concurrent.futures.ThreadPoolExecutor(max_workers=20)
+EXECUTOR = concurrent.futures.ThreadPoolExecutor(max_workers=100)
 
 class UnhealthyDeployment(Exception):
     """Exception raised when a workload instance fails its health check.
@@ -121,31 +121,60 @@ def resume(namespace: str) -> List[Event]:
                                 name=deployment["metadata"]["name"]))
     return events
 
-def _pod_start_watcher(deployment: kube.MANIFEST) -> None:
+def _matchlabel_from_deployment(deployment: kube.MANIFEST) -> str:
     selector = deployment["spec"]["selector"]
     if "matchLabels" in selector:  # when created as a dict
         did = selector["matchLabels"]["deployment-id"]
     else:  # when object converted to dict
         did = selector["match_labels"]["deployment-id"]
-    label = f'deployment-id={did}'
-    LOGGER.debug("watcher for %s", label)
+    return f'deployment-id={did}'
+
+def _pod_start_watcher(deployment: kube.MANIFEST) -> None:
+    namespace = deployment["metadata"]["namespace"]
+    name = deployment["metadata"]["name"]
+    full_name = f'{namespace}/{name}'
+    label = _matchlabel_from_deployment(deployment)
+    LOGGER.debug("watcher for %s", full_name)
     start_time = time.time()
     watch = kubernetes.watch.Watch()
     core_v1 = k8s.CoreV1Api()
-    for event in watch.stream(
-            func=core_v1.list_namespaced_pod,
-            namespace=deployment["metadata"]["namespace"],
-            label_selector=label):
+    for event in watch.stream(func=core_v1.list_namespaced_pod,
+                              namespace=namespace,
+                              label_selector=label,
+                              timeout_seconds=60):
         if event["object"].status.phase == "Running":
             watch.stop()
             end_time = time.time()
-            d_name = f'{deployment["metadata"]["namespace"]}/{deployment["metadata"]["name"]}'
-            LOGGER.info("%s started in %0.2f sec", d_name, end_time-start_time)
+            LOGGER.info("%s started in %0.2f sec", full_name, end_time-start_time)
+            return
         # event.type: ADDED, MODIFIED, DELETED
         if event["type"] == "DELETED":
             # Pod was deleted while we were waiting for it to start.
-            LOGGER.debug("%s deleted before it started", did)
+            LOGGER.debug("%s deleted before it started", full_name)
             watch.stop()
+            return
+    LOGGER.warning("Gave up waiting for start of %s", full_name)
+
+def _pod_stop_watcher(deployment: kube.MANIFEST) -> None:
+    namespace = deployment["metadata"]["namespace"]
+    name = deployment["metadata"]["name"]
+    full_name = f'{namespace}/{name}'
+    label = _matchlabel_from_deployment(deployment)
+    LOGGER.debug("watcher for %s", full_name)
+    start_time = time.time()
+    watch = kubernetes.watch.Watch()
+    core_v1 = k8s.CoreV1Api()
+    for event in watch.stream(func=core_v1.list_namespaced_pod,
+                              namespace=namespace,
+                              label_selector=label,
+                              timeout_seconds=60):
+        # event.type: ADDED, MODIFIED, DELETED
+        if event["type"] == "DELETED":
+            end_time = time.time()
+            watch.stop()
+            LOGGER.info("%s stopped in %0.2f sec", full_name, end_time-start_time)
+            return
+    LOGGER.warning("Gave up waiting for termination of %s", full_name)
 
 def _get_workload(ns_name: str,
                   sc_name: str,
@@ -358,6 +387,7 @@ class Lifecycle(Event):
                     self._namespace,
                     self._name,
                     pvc_name)
+        EXECUTOR.submit(_pod_stop_watcher, copy.deepcopy(deploy))
         apps_v1 = k8s.AppsV1Api()
         kube.call(apps_v1.delete_namespaced_deployment,
                   namespace=self._namespace,
@@ -394,6 +424,7 @@ class Lifecycle(Event):
             idle_time = time.time() + random.expovariate(1/idle_mean)
             health_time = time.time() + self._health_interval
             LOGGER.info("active->idle: %s/%s", self._namespace, self._name)
+            EXECUTOR.submit(_pod_stop_watcher, copy.deepcopy(deploy))
         anno["ocs-monkey/osio-idle-at"] = str(idle_time)
         anno["ocs-monkey/osio-health-at"] = str(health_time)
         return deploy
