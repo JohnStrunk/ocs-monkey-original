@@ -47,7 +47,6 @@ jobs:
       script:
         - tox -v -e py36,py36-kubetest,srclint
         - helm lint helm/ocs-monkey-generator
-      after_script:
         - ./build.sh "${MONKEY_GENERATOR_REPO}"
         - docker inspect "${MONKEY_GENERATOR_REPO}"
       deploy:
