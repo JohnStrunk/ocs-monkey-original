@@ -29,6 +29,8 @@ spec:
             - "rook-ceph"
             - "--storageclass"
             - "csi-rbd"
+            - "--oc"
+            - "/oc_in_cluster.sh"
             - "--sleep-on-error"
           volumeMounts:
             - name: logdir

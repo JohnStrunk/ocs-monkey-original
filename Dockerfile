@@ -13,8 +13,11 @@ RUN yum install -y epel-release && \
 #-- Set up the workload script
 COPY requirements.txt /
 RUN pip3 install --upgrade -r requirements.txt
-COPY *.py /
-RUN chmod a+r /*.py
+
+RUN curl -L https://mirror.openshift.com/pub/openshift-v4/clients/ocp/4.1.7/openshift-client-linux-4.1.7.tar.gz | tar xvzf -
+COPY *.py oc_in_cluster.sh /
+RUN chmod a+r /*.py && \
+    chmod a+rx /oc_in_cluster.sh
 ENTRYPOINT ["python3", "/runner.py"]
 
 RUN mkdir -p /logs && chmod 777 /logs
