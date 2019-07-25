@@ -1,0 +1,3 @@
+ocs-monkey workload generator has been deployed!
+
+Generator is running in namespace: {{ .Release.Namespace }}

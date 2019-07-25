@@ -1,0 +1,3 @@
+---
+# Container image for the workload controller
+controllerImage: quay.io/johnstrunk/ocs-monkey-generator
