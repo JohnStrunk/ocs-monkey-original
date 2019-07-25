@@ -1,0 +1,44 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: '{{ template "ocs-monkey-generator.fullname" . }}'
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: '{{ include "ocs-monkey-generator.name" . }}'
+      app.kubernetes.io/instance: "{{ .Release.Name }}"
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: '{{ include "ocs-monkey-generator.name" . }}'
+        app.kubernetes.io/instance: "{{ .Release.Name }}"
+    spec:
+      containers:
+        - name: runner
+          image: "{{ .Values.controllerImage }}"
+          args:
+            - "--log-dir"
+            - "/logs"
+            - "--accessmode"
+            - "ReadWriteOnce"
+            - "--namespace"
+            - "ocs-monkey"
+            - "--ocs-namespace"
+            - "rook-ceph"
+            - "--storageclass"
+            - "csi-rbd"
+            - "--oc"
+            - "/oc_in_cluster.sh"
+            - "--sleep-on-error"
+          volumeMounts:
+            - name: logdir
+              mountPath: "/logs"
+      securityContext:
+        fsGroup: 99999
+      serviceAccount: '{{ template "ocs-monkey-generator.fullname" . }}'
+      volumes:
+        - name: logdir
+          persistentVolumeClaim:
+            claimName: '{{ template "ocs-monkey-generator.fullname" . }}'

@@ -6,6 +6,7 @@ import logging
 import os
 import subprocess
 import random
+import time
 
 import event
 import log_gather
@@ -84,6 +85,9 @@ def main() -> None:
                         default="csi-rbd",
                         type=str,
                         help="StorageClassName for the workload's PVCs")
+    parser.add_argument("-z", "--sleep-on-error",
+                        action="store_true",
+                        help="On error, sleep forever instead of exit")
     global CLI_ARGS  # pylint: disable=global-statement
     CLI_ARGS = parser.parse_args()
 
@@ -127,6 +131,9 @@ def main() -> None:
     except osio.UnhealthyDeployment:
         logging.info("starting log collection")
         log_gather.gather(log_dir)
+        logging.info("Controller stopped due to detected error")
+        while CLI_ARGS.sleep_on_error:
+            time.sleep(9999)
 
 if __name__ == '__main__':
     main()
