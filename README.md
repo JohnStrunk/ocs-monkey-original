@@ -25,14 +25,14 @@ Command line invocation:
 
 ```
 source setup-env.sh
-KUBECONFIG=/path/to/your/kubeconfig runner.py
+KUBECONFIG=/path/to/your/kubeconfig workload_runner.py
 ```
 
 A number of options are available:
 
 ```
-$ ./runner.py --help
-usage: runner.py [-h] [-l LOG_DIR] [-m {ReadWriteOnce,ReadWriteMany}]
+$ ./workload_runner.py --help
+usage: workload_runner.py [-h] [-l LOG_DIR] [-m {ReadWriteOnce,ReadWriteMany}]
                  [-n NAMESPACE] [--oc OC] [--ocs-namespace OCS_NAMESPACE]
                  [-s STORAGECLASS] [-z]
 

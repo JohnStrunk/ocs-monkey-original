@@ -18,7 +18,7 @@ RUN curl -L https://mirror.openshift.com/pub/openshift-v4/clients/ocp/4.1.7/open
 COPY *.py oc_in_cluster.sh /
 RUN chmod a+r /*.py && \
     chmod a+rx /oc_in_cluster.sh
-ENTRYPOINT ["python3", "/runner.py"]
+ENTRYPOINT ["python3", "/workload_runner.py"]
 
 RUN mkdir -p /logs && chmod 777 /logs
 VOLUME /logs
