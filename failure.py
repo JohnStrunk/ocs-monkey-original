@@ -11,6 +11,9 @@ import abc
 class Error(Exception):
     """Base class for execptions from the failure framework."""
 
+class NoSafeFailures(Error):
+    """No safe-to-execute failures can be found."""
+
 
 class Failure(abc.ABC):
     """
@@ -34,10 +37,7 @@ class Failure(abc.ABC):
     @abc.abstractmethod
     def mitigated(self, timeout_seconds: float = 0) -> bool:
         """
-        Determine (and/or) wait for the SUT to mitigate the failure.
-
-        Parameters:
-            timeout_seconds: Maximum time to wait for the SUT to mitigate
+        Determine if the SUT has mitigated the failure.
 
         Returns:
             True if the failure has been mitigated
@@ -65,5 +65,9 @@ class FailureType(abc.ABC):  # pylint: disable=too-few-public-methods
 
         Returns:
             The new Failure instance.
+
+        Raises:
+            NoSafeFailures: If no Failures can be found for which
+                Failure.is_safe() == True
 
         """
