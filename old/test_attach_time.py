@@ -14,11 +14,11 @@ def test_attach_time(benchmark, unique_namespace, storageclass_iterator):
     namespace = unique_namespace
 
     pvc = handle_api(core_v1.create_namespaced_persistent_volume_claim,
-                     namespace=namespace.metadata.name,
+                     namespace=namespace["metadata"]["name"],
                      body={
                          "metadata": {
                              "name": "mypvc",
-                             "namespace": namespace.metadata.name
+                             "namespace": namespace["metadata"]["name"]
                          },
                          "spec": {
                              "accessModes": ["ReadWriteOnce"],
@@ -41,7 +41,7 @@ def test_attach_time(benchmark, unique_namespace, storageclass_iterator):
     pod = {
         "metadata": {
             "name": "mypod",
-            "namespace": namespace.metadata.name
+            "namespace": namespace["metadata"]["name"]
         },
         "spec": {
             "containers": [{

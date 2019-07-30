@@ -13,11 +13,11 @@ def _provision_start_delete(namespace, sc_name):
     pvc_name = f"pvc-{random.randrange(999999999)}"
     pod_name = f"pod-{random.randrange(999999999)}"
     pvc = handle_api(core_v1.create_namespaced_persistent_volume_claim,
-                     namespace=namespace.metadata.name,
+                     namespace=namespace["metadata"]["name"],
                      body={
                          "metadata": {
                              "name": pvc_name,
-                             "namespace": namespace.metadata.name
+                             "namespace": namespace["metadata"]["name"]
                          },
                          "spec": {
                              "accessModes": ["ReadWriteOnce"],
@@ -33,7 +33,7 @@ def _provision_start_delete(namespace, sc_name):
     pod_dict = {
         "metadata": {
             "name": pod_name,
-            "namespace": namespace.metadata.name
+            "namespace": namespace["metadata"]["name"]
         },
         "spec": {
             "containers": [{
