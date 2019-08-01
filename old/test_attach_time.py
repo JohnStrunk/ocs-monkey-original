@@ -6,7 +6,7 @@ import pytest
 from util import handle_api, start_and_waitfor_pod
 
 
-@pytest.mark.benchmark(min_rounds=10)
+@pytest.mark.benchmark
 def test_attach_time(benchmark, unique_namespace, storageclass_iterator):
     """Benchmark the time required to start a pod w/ an attached PVC."""
     core_v1 = k8s.CoreV1Api()

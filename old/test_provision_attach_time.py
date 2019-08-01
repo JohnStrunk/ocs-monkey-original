@@ -65,7 +65,7 @@ def _provision_start_delete(namespace, sc_name):
                body=k8s.V1DeleteOptions())
 
 
-@pytest.mark.benchmark(min_rounds=10)
+@pytest.mark.benchmark
 def test_provision_attach_time(benchmark,
                                unique_namespace,
                                storageclass_iterator):
