@@ -54,7 +54,7 @@ class OcsImageVersions(log_gather.Collector):
     def gather(self, path: str) -> bool:
         """Scrape the names of the pod images."""
         completed = subprocess.run(f'{CLI_ARGS.oc} -n {self._ns} get po -oyaml'
-                                   ' | grep image: | sort -u '
+                                   ' | grep -E "(image:|imageID:)" | sort -u '
                                    f'> {path}/ocs_images.log', shell=True)
         return completed.returncode == 0
 
@@ -112,7 +112,7 @@ def main() -> None:
 
     # register log collector(s)
     log_gather.add(OcsMustGather())
-    # log_gather.add(MustGather())
+    log_gather.add(MustGather())
     log_gather.add(OcsImageVersions(CLI_ARGS.ocs_namespace))
 
     kube.create_namespace(CLI_ARGS.namespace, existing_ok=True)
