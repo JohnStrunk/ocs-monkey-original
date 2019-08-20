@@ -25,7 +25,7 @@ class Failure(abc.ABC):
 
     @abc.abstractmethod
     def is_safe(self) -> bool:
-        """Determine if SUT should survive this Failure."""
+        """Determine if SUT is expected to survive this Failure."""
 
     @abc.abstractmethod
     def invoke(self) -> None:
@@ -43,6 +43,29 @@ class Failure(abc.ABC):
             True if the failure has been mitigated
 
         """
+
+    def execute(self, timeout_seconds: float = 0) -> bool:
+        """
+        Run the failure from start to finish and report status.
+
+        This is a convenience function for running single failures
+        synchronously, in isolation. It inovkes the failure, waits for the SUT
+        to mitigate the failure, then executes any repair steps to return the
+        infrastructure to its pre-failure state.
+
+        Parameters:
+            timeout_seconds: The amount of time to wait for the SUT to mitigate
+                the failure
+
+        Returns:
+            True if the failure was properly mitigated within the specified
+                timeout
+
+        """
+        self.invoke()
+        result = self.mitigated(timeout_seconds)
+        self.repair()
+        return result
 
 
 class FailureType(abc.ABC):  # pylint: disable=too-few-public-methods
