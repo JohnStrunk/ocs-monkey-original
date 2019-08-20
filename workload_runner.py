@@ -40,7 +40,7 @@ class OcsMustGather(log_gather.Collector):
         """Run must-gather and notify of success."""
         mg_dir = os.path.join(path, 'ocs-must-gather')
         completed = subprocess.run(f'{CLI_ARGS.oc} adm must-gather'
-                                   f' --image=ashishranjan738/ocs-must-gather'
+                                   f' --image=quay.io/ocs-dev/ocs-must-gather'
                                    f' --dest-dir {mg_dir}', shell=True)
         return completed.returncode == 0
 
