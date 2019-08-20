@@ -1,9 +1,16 @@
 FROM centos:7
 
-RUN yum install -y epel-release && \
-    yum install -y \
+RUN yum install -y --setopt=skip_missing_names_on_install=False \
+      epel-release \
+    && \
+    yum install -y --setopt=skip_missing_names_on_install=False \
       bash \
+      gcc \
+      git \
+      make \
+      openssl-devel \
       python36 \
+      python36-devel \
       python36-pip \
     && \
     yum update -y && \
