@@ -102,6 +102,7 @@ def main() -> None:
     logger.setLevel(logging.INFO)
     formatter = \
         logging.Formatter("%(asctime)s %(name)s - %(levelname)s - %(message)s")
+    formatter.converter = time.gmtime
     for handler in handlers:
         handler.setFormatter(formatter)
         logger.addHandler(handler)
