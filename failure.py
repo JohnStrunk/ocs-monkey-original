@@ -24,10 +24,6 @@ class Failure(abc.ABC):
     """
 
     @abc.abstractmethod
-    def is_safe(self) -> bool:
-        """Determine if SUT is expected to survive this Failure."""
-
-    @abc.abstractmethod
     def invoke(self) -> None:
         """Invoke the failure on the system."""
 
@@ -84,7 +80,7 @@ class FailureType(abc.ABC):  # pylint: disable=too-few-public-methods
         Get an instance of this type of failure.
 
         The failure instance that is returned is expected to be "safe" (i.e.,
-        failure.is_safe() should return True).
+        the SUT is expected to survive if failure.invoke() is executed).
 
         Returns:
             The new Failure instance.
