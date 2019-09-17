@@ -26,6 +26,7 @@ from event import Event
 
 LOGGER = logging.getLogger(__name__)
 EXECUTOR = concurrent.futures.ThreadPoolExecutor(max_workers=100)
+WORKAROUND_MIN_RUNTIME = True
 
 class UnhealthyDeployment(Exception):
     """Exception raised when a workload instance fails its health check.
@@ -80,6 +81,9 @@ def start(namespace: str,  # pylint: disable=too-many-arguments
     LOGGER.info("Average # of deployments: %.1f", lifetime/interarrival)
     LOGGER.info("Fraction of deployments active: %.2f", active/(active+idle))
     LOGGER.info("Transitions per deployment: %.1f", 2*(active+idle)/lifetime)
+    if WORKAROUND_MIN_RUNTIME:
+        LOGGER.warning("Workaround enabled: min pod runtime")
+
     return Creator(namespace=namespace,
                    storage_class=storage_class,
                    access_mode=access_mode,
@@ -374,7 +378,10 @@ class Lifecycle(Event):
     def _action_initialize(self, deploy: kube.MANIFEST) -> kube.MANIFEST:
         anno = deploy["metadata"]["annotations"]
         idle_mean = float(anno["ocs-monkey/osio-idle"])
-        idle_time = time.time() + random.expovariate(1/idle_mean)
+        idle_duration = random.expovariate(1/idle_mean)
+        if WORKAROUND_MIN_RUNTIME:
+            idle_duration = max(idle_duration, self._health_interval_initial)
+        idle_time = time.time() + idle_duration
         anno["ocs-monkey/osio-idle-at"] = str(idle_time)
         health_time = time.time() + self._health_interval_initial
         anno["ocs-monkey/osio-health-at"] = str(health_time)
@@ -414,14 +421,20 @@ class Lifecycle(Event):
         if deploy["spec"]["replicas"] == 0:  # idle -> active
             deploy["spec"]["replicas"] = 1
             active_mean = float(anno["ocs-monkey/osio-active"])
-            idle_time = time.time() + random.expovariate(1/active_mean)
+            active_duration = random.expovariate(1/active_mean)
+            if WORKAROUND_MIN_RUNTIME:
+                active_duration = max(active_duration, self._health_interval_initial)
+            idle_time = time.time() + active_duration
             health_time = time.time() + self._health_interval_initial
             LOGGER.info("idle->active: %s/%s", self._namespace, self._name)
             EXECUTOR.submit(_pod_start_watcher, copy.deepcopy(deploy))
         else:  # active -> idle
             deploy["spec"]["replicas"] = 0
             idle_mean = float(anno["ocs-monkey/osio-idle"])
-            idle_time = time.time() + random.expovariate(1/idle_mean)
+            idle_duration = random.expovariate(1/idle_mean)
+            if WORKAROUND_MIN_RUNTIME:
+                idle_duration = max(idle_duration, self._health_interval_initial)
+            idle_time = time.time() + idle_duration
             health_time = time.time() + self._health_interval
             LOGGER.info("active->idle: %s/%s", self._namespace, self._name)
             EXECUTOR.submit(_pod_stop_watcher, copy.deepcopy(deploy))
