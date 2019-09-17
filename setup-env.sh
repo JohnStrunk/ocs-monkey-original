@@ -10,4 +10,4 @@ source "$VENV_NAME/bin/activate"
 pip install --upgrade pip
 pip install --upgrade -r requirements.txt
 
-echo "Activate: . ./.venv/bin/activate"
+echo "Activate: . ./${VENV_NAME}/bin/activate"

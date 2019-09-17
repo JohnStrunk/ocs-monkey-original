@@ -78,11 +78,11 @@ def main() -> None:
                         type=str,
                         help="Path/executable for the oc command")
     parser.add_argument("--ocs-namespace",
-                        default="rook-ceph",
+                        default="openshift-storage",
                         type=str,
                         help="Namespace where the OCS components are running")
     parser.add_argument("-s", "--storageclass",
-                        default="csi-rbd",
+                        default="openshift-storage-ceph-rbd",
                         type=str,
                         help="StorageClassName for the workload's PVCs")
     parser.add_argument("-z", "--sleep-on-error",
