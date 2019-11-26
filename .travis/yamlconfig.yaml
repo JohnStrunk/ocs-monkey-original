@@ -1,0 +1,10 @@
+---
+
+extends: default
+ignore: |
+  helm/ocs-monkey-generator/templates/*
+rules:
+  indentation:
+    indent-sequences: consistent
+  line-length:
+    allow-non-breakable-inline-mappings: true
