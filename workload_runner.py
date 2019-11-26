@@ -27,7 +27,8 @@ class MustGather(log_gather.Collector):
         """Run must-gather and notify of success."""
         mg_dir = os.path.join(path, 'must-gather')
         completed = subprocess.run(f'{CLI_ARGS.oc} adm must-gather'
-                                   f' --dest-dir {mg_dir}', shell=True)
+                                   f' --dest-dir {mg_dir}', shell=True,
+                                   check=False)
         return completed.returncode == 0
 
 class OcsMustGather(log_gather.Collector):
@@ -41,7 +42,8 @@ class OcsMustGather(log_gather.Collector):
         mg_dir = os.path.join(path, 'ocs-must-gather')
         completed = subprocess.run(f'{CLI_ARGS.oc} adm must-gather'
                                    f' --image=quay.io/ocs-dev/ocs-must-gather'
-                                   f' --dest-dir {mg_dir}', shell=True)
+                                   f' --dest-dir {mg_dir}', shell=True,
+                                   check=False)
         return completed.returncode == 0
 
 class OcsImageVersions(log_gather.Collector):
@@ -55,7 +57,8 @@ class OcsImageVersions(log_gather.Collector):
         """Scrape the names of the pod images."""
         completed = subprocess.run(f'{CLI_ARGS.oc} -n {self._ns} get po -oyaml'
                                    ' | grep -E "(image:|imageID:)" | sort -u '
-                                   f'> {path}/ocs_images.log', shell=True)
+                                   f'> {path}/ocs_images.log', shell=True,
+                                   check=False)
         return completed.returncode == 0
 
 def main() -> None:
@@ -123,10 +126,10 @@ def main() -> None:
     dispatch.add(osio.start(namespace=CLI_ARGS.namespace,
                             storage_class=CLI_ARGS.storageclass,
                             access_mode=CLI_ARGS.accessmode,
-                            interarrival=10,
-                            lifetime=300,
-                            active=60,
-                            idle=30))
+                            interarrival=20,
+                            lifetime=3600,
+                            active=300,
+                            idle=60))
     try:
         dispatch.run()
     except osio.UnhealthyDeployment:
