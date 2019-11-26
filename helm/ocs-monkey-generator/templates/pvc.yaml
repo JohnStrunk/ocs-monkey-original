@@ -4,9 +4,9 @@ kind: PersistentVolumeClaim
 metadata:
   name: '{{ template "ocs-monkey-generator.fullname" . }}'
 spec:
-  storageClassName: gp2
+  storageClassName: {{ .Values.logPVCClass }}
   accessModes:
     - ReadWriteOnce
   resources:
     requests:
-      storage: 2Gi
+      storage: 5Gi
