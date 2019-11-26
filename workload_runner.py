@@ -123,10 +123,10 @@ def main() -> None:
     dispatch.add(osio.start(namespace=CLI_ARGS.namespace,
                             storage_class=CLI_ARGS.storageclass,
                             access_mode=CLI_ARGS.accessmode,
-                            interarrival=10,
-                            lifetime=300,
-                            active=60,
-                            idle=30))
+                            interarrival=20,
+                            lifetime=3600,
+                            active=300,
+                            idle=60))
     try:
         dispatch.run()
     except osio.UnhealthyDeployment:
