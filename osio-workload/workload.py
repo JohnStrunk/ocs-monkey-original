@@ -47,7 +47,7 @@ def do_untar(image: str, data_dir: str) -> bool:
     logging.info("Untar %s into %s", image, data_dir)
     os.mkdir(data_dir)
     completed = subprocess.run(f'tar -C "{data_dir}" -xJf "{image}"',
-                               shell=True)
+                               shell=True, check=False)
     return completed.returncode == 0
 
 def do_rm(data_dir: str) -> bool:
