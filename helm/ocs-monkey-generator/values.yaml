@@ -1,3 +1,14 @@
 ---
 # Container image for the workload controller
 controllerImage: quay.io/johnstrunk/ocs-monkey-generator
+
+ocs:
+  namespace: openshift-storage
+
+workload:
+  accessmode: ReadWriteOnce
+  namespace: ocs-monkey
+  storageClass: openshift-storage-ceph-rbd
+
+# StorageClass for the workload generator's logs (and must-gather)
+logPVCClass: gp2
