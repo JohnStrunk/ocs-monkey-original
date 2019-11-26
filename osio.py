@@ -352,7 +352,7 @@ class Lifecycle(Event):
     """Manage the lifecycle of a workload instance."""
 
     _health_interval = 10  # When already running
-    _health_interval_initial = 90  # When pod starting
+    _health_interval_initial = 300  # When pod starting
 
     def __init__(self, when: float, namespace: str, name: str) -> None:
         """
