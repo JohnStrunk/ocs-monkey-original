@@ -80,7 +80,7 @@ def start(namespace: str,  # pylint: disable=too-many-arguments
     LOGGER.info("pvc access mode: %s", access_mode)
     LOGGER.info("Average # of deployments: %.1f", lifetime/interarrival)
     LOGGER.info("Fraction of deployments active: %.2f", active/(active+idle))
-    LOGGER.info("Transitions per deployment: %.1f", 2*(active+idle)/lifetime)
+    LOGGER.info("Transitions per deployment: %.1f", 2*lifetime/(active+idle))
     if WORKAROUND_MIN_RUNTIME:
         LOGGER.warning("Workaround enabled: min pod runtime")
 
