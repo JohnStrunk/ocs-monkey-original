@@ -2,5 +2,10 @@ ocs-monkey workload generator has been deployed!
 
 Generator is running in namespace: {{ .Release.Namespace }}
 
+Workload details:
+  Workload namespace: {{ .Values.workload.namespace }}
+  PVC storage class: {{ .Values.workload.storageClass }}
+  PVC access mode: {{ .Values.workload.accessmode }}
+
 Watch the generator's logs via:
   $ kubectl -n {{ .Release.Namespace }} logs -f deploy/{{ template "ocs-monkey-generator.fullname" . }}
