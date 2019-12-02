@@ -196,7 +196,7 @@ def _pod_stop_watcher(deployment: kube.MANIFEST) -> None:
             return
     LOGGER.warning("Gave up waiting for termination of %s", full_name)
 
-def _get_workload(ns_name: str,
+def _get_workload(ns_name: str,  # pylint: disable=too-many-arguments
                   sc_name: str,
                   access_mode: str,
                   kernel_slots: int,
@@ -291,7 +291,7 @@ def _get_workload(ns_name: str,
     }
     return manifests
 
-class Creator(Event):
+class Creator(Event):  # pylint: disable=too-many-instance-attributes
     """
     Create Expontitially distributed Deployments.
 
