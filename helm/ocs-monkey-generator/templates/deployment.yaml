@@ -31,7 +31,7 @@ spec:
             - "{{ .Values.workload.storageClass }}"
             - "--oc"
             - "/oc_in_cluster.sh"
-            - "--osio-interrarival"
+            - "--osio-interarrival"
             - "{{ .Values.osio.workerInterrarival }}"
             - "--osio-lifetime"
             - "{{ .Values.osio.workerLifetime }}"
