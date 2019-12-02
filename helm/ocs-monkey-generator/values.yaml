@@ -5,6 +5,16 @@ controllerImage: quay.io/johnstrunk/ocs-monkey-generator
 ocs:
   namespace: openshift-storage
 
+osio:
+  image: quay.io/johnstrunk/osio-workload:latest
+  workerInterarrival: 45
+  workerLifetime: 86400
+  workerActive: 1800
+  workerIdle: 18000
+  kernelSlots: 3
+  kernelUntar: 6
+  kernelRm: 6
+
 workload:
   accessmode: ReadWriteOnce
   namespace: ocs-monkey

@@ -2,5 +2,24 @@ ocs-monkey workload generator has been deployed!
 
 Generator is running in namespace: {{ .Release.Namespace }}
 
+Workload details:
+  Workload namespace: {{ .Values.workload.namespace }}
+  PVC storage class: {{ .Values.workload.storageClass }}
+  PVC access mode: {{ .Values.workload.accessmode }}
+
+  Worker pod image: {{ .Values.osio.image }}
+  Interrarival, lifetime: {{ .Values.osio.workerInterarrival }}, {{ .Values.osio.workerLifetime }}
+  Active, idle: {{ .Values.osio.workerActive }}, {{ .Values.osio.workerIdle }}
+  Kernel slots, untar, rm: {{ .Values.osio.kernelSlots }}, {{ .Values.osio.kernelUntar }}, {{ .Values.osio.kernelRm }}
+  {{- $N := div .Values.osio.workerLifetime .Values.osio.workerInterarrival }}
+  Statistics (means):
+    > Workers in system: {{ $N }}
+    > Worker transitions: {{ div .Values.osio.workerLifetime (add .Values.osio.workerActive .Values.osio.workerIdle) }}
+    {{- $AP := div (mul 100 .Values.osio.workerActive) (add .Values.osio.workerActive .Values.osio.workerIdle) }}
+    {{- $WA := div (mul $AP $N) 100 }}
+    > Worker untars over its lifetime: {{ div (mul $AP .Values.osio.workerLifetime .Values.osio.kernelUntar) 360000 }}
+    > Workers active: {{ $WA }}
+    > Aggregate untar rate (#/hr): {{ mul $WA .Values.osio.kernelUntar}}
+
 Watch the generator's logs via:
   $ kubectl -n {{ .Release.Namespace }} logs -f deploy/{{ template "ocs-monkey-generator.fullname" . }}

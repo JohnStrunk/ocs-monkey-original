@@ -91,6 +91,38 @@ def main() -> None:
     parser.add_argument("-z", "--sleep-on-error",
                         action="store_true",
                         help="On error, sleep forever instead of exit")
+    parser.add_argument("--osio-interarrival",
+                        default=20,
+                        type=float,
+                        help="OSIO workload mean interrarival time (s)")
+    parser.add_argument("--osio-lifetime",
+                        default=3600,
+                        type=float,
+                        help="OSIO workload mean lifetime (s)")
+    parser.add_argument("--osio-active-time",
+                        default=300,
+                        type=float,
+                        help="OSIO workload mean active period (s)")
+    parser.add_argument("--osio-idle-time",
+                        default=60,
+                        type=float,
+                        help="OSIO workload mean idle period (s)")
+    parser.add_argument("--osio-kernel-slots",
+                        default=3,
+                        type=int,
+                        help="OSIO workload slots for kernel untar")
+    parser.add_argument("--osio-kernel-untar",
+                        default=10,
+                        type=float,
+                        help="OSIO workload kernel untar rate (#/hr)")
+    parser.add_argument("--osio-kernel-rm",
+                        default=10,
+                        type=float,
+                        help="OSIO workload kernel rm rate (#/hr)")
+    parser.add_argument("--osio-image",
+                        default="quay.io/johnstrunk/osio-workload",
+                        type=str,
+                        help="Container image for OSIO worker pods")
     global CLI_ARGS  # pylint: disable=global-statement
     CLI_ARGS = parser.parse_args()
 
@@ -126,10 +158,14 @@ def main() -> None:
     dispatch.add(osio.start(namespace=CLI_ARGS.namespace,
                             storage_class=CLI_ARGS.storageclass,
                             access_mode=CLI_ARGS.accessmode,
-                            interarrival=20,
-                            lifetime=3600,
-                            active=300,
-                            idle=60))
+                            interarrival=CLI_ARGS.osio_interarrival,
+                            lifetime=CLI_ARGS.osio_lifetime,
+                            active=CLI_ARGS.osio_active_time,
+                            idle=CLI_ARGS.osio_idle_time,
+                            kernel_slots=CLI_ARGS.osio_kernel_slots,
+                            kernel_untar=CLI_ARGS.osio_kernel_untar,
+                            kernel_rm=CLI_ARGS.osio_kernel_rm,
+                            workload_image=CLI_ARGS.osio_image))
     try:
         dispatch.run()
     except osio.UnhealthyDeployment:
