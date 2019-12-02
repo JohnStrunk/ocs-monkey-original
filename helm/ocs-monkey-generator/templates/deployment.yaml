@@ -32,7 +32,7 @@ spec:
             - "--oc"
             - "/oc_in_cluster.sh"
             - "--osio-interarrival"
-            - "{{ .Values.osio.workerInterrarival }}"
+            - "{{ .Values.osio.workerInterarrival }}"
             - "--osio-lifetime"
             - "{{ .Values.osio.workerLifetime }}"
             - "--osio-active-time"
