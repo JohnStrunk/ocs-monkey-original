@@ -50,7 +50,11 @@ def start(namespace: str,  # pylint: disable=too-many-arguments
           interarrival: float,
           lifetime: float,
           active: float,
-          idle: float) -> Event:
+          idle: float,
+          kernel_slots: int,
+          kernel_untar: float,
+          kernel_rm: int,
+          workload_image: str) -> Event:
     """
     Start the workload.
 
@@ -67,6 +71,10 @@ def start(namespace: str,  # pylint: disable=too-many-arguments
             becomes idle.
         idle: The mean idle time for the Deployment before it becomes
             active.
+        kernel_slots: The number of slots where the kernel can be untar-ed
+        kernel_untar: The frequency #/hr at which the kernel is untar-ed
+        kernel_rm: The frequency #/hr at which the kernel is rm-ed
+        workload_image: Container image for osio worker pods
 
     Returns:
         The initial Event that starts the workload. This Event should be queued
@@ -81,6 +89,10 @@ def start(namespace: str,  # pylint: disable=too-many-arguments
     LOGGER.info("Average # of deployments: %.1f", lifetime/interarrival)
     LOGGER.info("Fraction of deployments active: %.2f", active/(active+idle))
     LOGGER.info("Transitions per deployment: %.1f", 2*lifetime/(active+idle))
+    LOGGER.info("Kernel slots: %d", kernel_slots)
+    LOGGER.info("Kernel untar (#/hr): %.0f", kernel_untar)
+    LOGGER.info("Kernel rm (#/hr): %.0f", kernel_rm)
+    LOGGER.info("Workload image: %s", workload_image)
     if WORKAROUND_MIN_RUNTIME:
         LOGGER.warning("Workaround enabled: min pod runtime")
 
@@ -90,7 +102,11 @@ def start(namespace: str,  # pylint: disable=too-many-arguments
                    interarrival=interarrival,
                    lifetime=lifetime,
                    active=active,
-                   idle=idle)
+                   idle=idle,
+                   kernel_slots=kernel_slots,
+                   kernel_untar=kernel_untar,
+                   kernel_rm=kernel_rm,
+                   workload_image=workload_image)
 
 def resume(namespace: str) -> List[Event]:
     """
@@ -182,7 +198,11 @@ def _pod_stop_watcher(deployment: kube.MANIFEST) -> None:
 
 def _get_workload(ns_name: str,
                   sc_name: str,
-                  access_mode: str) -> Dict[str, kube.MANIFEST]:
+                  access_mode: str,
+                  kernel_slots: int,
+                  kernel_untar: float,
+                  kernel_rm: float,
+                  workload_image: str) -> Dict[str, kube.MANIFEST]:
     """
     Generate a workload description.
 
@@ -216,11 +236,11 @@ def _get_workload(ns_name: str,
                 "spec": {
                     "containers": [{
                         "name": "osio-workload",
-                        "image": "quay.io/johnstrunk/osio-workload",
+                        "image": workload_image,
                         "args": [
-                            "--untar-rate", "10",
-                            "--rm-rate", "10",
-                            "--kernel-slots", "3"
+                            "--untar-rate", f"{kernel_untar}",
+                            "--rm-rate", f"{kernel_rm}",
+                            "--kernel-slots", f"{kernel_slots}"
                         ],
                         "readinessProbe": {
                             "exec": {
@@ -289,7 +309,11 @@ class Creator(Event):
                  interarrival: float,
                  lifetime: float,
                  active: float,
-                 idle: float) -> None:
+                 idle: float,
+                 kernel_slots: int,
+                 kernel_untar: float,
+                 kernel_rm: float,
+                 workload_image: str) -> None:
         """
         Deployments are created and destroyed at some random rate.
 
@@ -304,6 +328,10 @@ class Creator(Event):
         self._lifetime = lifetime
         self._active = active
         self._idle = idle
+        self._kernel_slots = kernel_slots
+        self._kernel_untar = kernel_untar
+        self._kernel_rm = kernel_rm
+        self._workload_image = workload_image
         super().__init__(when=time.time() +
                          random.expovariate(1/self._interarrival))
 
@@ -311,7 +339,9 @@ class Creator(Event):
         """Create a new Deployment & schedule it's destruction."""
         destroy_time = time.time() + random.expovariate(1/self._lifetime)
         manifests = _get_workload(self._namespace, self._storage_class,
-                                  self._access_mode)
+                                  self._access_mode, self._kernel_slots,
+                                  self._kernel_untar, self._kernel_rm,
+                                  self._workload_image)
         pvc = manifests["pvc"]
         deploy = manifests["deployment"]
         # Set necessary accotations on the Deployment
@@ -345,7 +375,11 @@ class Creator(Event):
                     self._interarrival,
                     self._lifetime,
                     self._active,
-                    self._idle)
+                    self._idle,
+                    self._kernel_slots,
+                    self._kernel_untar,
+                    self._kernel_rm,
+                    self._workload_image)
         ]
 
 class Lifecycle(Event):
