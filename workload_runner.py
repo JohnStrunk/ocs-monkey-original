@@ -4,62 +4,17 @@
 import argparse
 import logging
 import os
-import subprocess
 import random
 import time
 
 import event
 import log_gather
+import log_gather_ocs
 import osio
 import kube
 
 CLI_ARGS: argparse.Namespace
 RUN_ID = random.randrange(999999999)
-
-# pylint: disable=too-few-public-methods
-class MustGather(log_gather.Collector):
-    """Log collector that runs must-gather."""
-
-    def __init__(self) -> None:
-        """Create a log-collector using must-gather."""
-        super().__init__("must-gather")
-    def gather(self, path: str) -> bool:
-        """Run must-gather and notify of success."""
-        mg_dir = os.path.join(path, 'must-gather')
-        completed = subprocess.run(f'{CLI_ARGS.oc} adm must-gather'
-                                   f' --dest-dir {mg_dir}', shell=True,
-                                   check=False)
-        return completed.returncode == 0
-
-class OcsMustGather(log_gather.Collector):
-    """Log collector that runs ocs-must-gather."""
-
-    def __init__(self) -> None:
-        """Create a log-collector using ocs-must-gather."""
-        super().__init__("OCS must-gather")
-    def gather(self, path: str) -> bool:
-        """Run must-gather and notify of success."""
-        mg_dir = os.path.join(path, 'ocs-must-gather')
-        completed = subprocess.run(f'{CLI_ARGS.oc} adm must-gather'
-                                   f' --image=quay.io/ocs-dev/ocs-must-gather'
-                                   f' --dest-dir {mg_dir}', shell=True,
-                                   check=False)
-        return completed.returncode == 0
-
-class OcsImageVersions(log_gather.Collector):
-    """Grab the images & tags from the OCS namespace."""
-
-    def __init__(self, ocs_namespace: str) -> None:
-        """Create a log-collector that scrapes images tags."""
-        self._ns = ocs_namespace
-        super().__init__("OCS image versions")
-    def gather(self, path: str) -> bool:
-        """Scrape the names of the pod images."""
-        completed = subprocess.run(f'{CLI_ARGS.oc} -n {self._ns} get po -oyaml'
-                                   ' | grep -E "(image:|imageID:)" | sort -u '
-                                   f'> {path}/ocs_images.log', shell=True,
-                                   check=False)
-        return completed.returncode == 0
 
 def main() -> None:
     """Run the workload."""
@@ -147,9 +102,10 @@ def main() -> None:
     logging.info("log directory: %s", log_dir)
 
     # register log collector(s)
-    log_gather.add(OcsMustGather())
-    log_gather.add(MustGather())
-    log_gather.add(OcsImageVersions(CLI_ARGS.ocs_namespace))
+    log_gather.add(log_gather_ocs.OcsMustGather(CLI_ARGS.oc))
+    log_gather.add(log_gather_ocs.MustGather(CLI_ARGS.oc))
+    log_gather.add(log_gather_ocs.OcsImageVersions(CLI_ARGS.oc,
+                                                   CLI_ARGS.ocs_namespace))
 
     kube.create_namespace(CLI_ARGS.namespace, existing_ok=True)
 
