@@ -247,7 +247,8 @@ def _get_workload(ns_name: str,  # pylint: disable=too-many-arguments
                                 "command": ["/health.sh"]
                             },
                             "initialDelaySeconds": 5,
-                            "periodSeconds": 10
+                            "periodSeconds": 10,
+                            "timeoutSeconds": 5
                         },
                         "volumeMounts": [{
                             "name": "temp",
