@@ -11,7 +11,6 @@ from typing import List, Optional
 import failure
 import failure_ocs
 
-CLI_ARGS: argparse.Namespace
 RUN_ID = random.randrange(999999999)
 
 def verify_steady_state() -> bool:
@@ -38,36 +37,23 @@ def main() -> None:
     mttf = 150
     mitigation_timeout = 15 * 60
     steady_state_check_interval = 30
-    ocs_namespace = "openshift-storage"
-
-    # Assemble list of potential FailureTypes to induce
-    failure_types: List[failure.FailureType] = [
-        # CSI driver component pods
-        failure_ocs.DeletePodType(namespace=ocs_namespace,
-                                  labels={"app": "csi-rbdplugin"}),
-        failure_ocs.DeletePodType(namespace=ocs_namespace,
-                                  labels={"app": "csi-rbdplugin-provisioner"}),
-        # ceph component pods
-        failure_ocs.DeletePodType(namespace=ocs_namespace,
-                                  labels={"app": "rook-ceph-mon"}),
-        failure_ocs.DeletePodType(namespace=ocs_namespace,
-                                  labels={"app": "rook-ceph-osd"}),
-        # operator component pods
-        failure_ocs.DeletePodType(namespace=ocs_namespace,
-                                  labels={"app": "rook-ceph-operator"}),
-        failure_ocs.DeletePodType(namespace=ocs_namespace,
-                                  labels={"name": "ocs-operator"}),
-    ]
 
     parser = argparse.ArgumentParser()
     parser.add_argument("-l", "--log-dir",
                         default=os.getcwd(),
                         type=str,
                         help="Path to use for log files")
-    global CLI_ARGS  # pylint: disable=global-statement
-    CLI_ARGS = parser.parse_args()
+    parser.add_argument("--ocs-namespace",
+                        default="openshift-storage",
+                        type=str,
+                        help="Namespace where the OCS components are running")
+    parser.add_argument("--cephcluster-name",
+                        default="openshift-storage-cephcluster",
+                        type=str,
+                        help="Name of the cephcluster object")
+    cli_args = parser.parse_args()
 
-    log_dir = os.path.join(CLI_ARGS.log_dir, f'ocs-monkey-{RUN_ID}')
+    log_dir = os.path.join(cli_args.log_dir, f'ocs-monkey-chaos-{RUN_ID}')
     os.mkdir(log_dir)
 
     handlers = [
@@ -84,8 +70,36 @@ def main() -> None:
         logger.addHandler(handler)
 
     logging.info("starting execution-- run id: %d", RUN_ID)
-    logging.info("program arguments: %s", CLI_ARGS)
+    logging.info("program arguments: %s", cli_args)
     logging.info("log directory: %s", log_dir)
+
+    cephcluster = failure_ocs.CephCluster(cli_args.ocs_namespace,
+                                          cli_args.cephcluster_name)
+
+    # Assemble list of potential FailureTypes to induce
+    failure_types: List[failure.FailureType] = [
+        # CSI driver component pods
+        failure_ocs.DeletePodType(namespace=cli_args.ocs_namespace,
+                                  labels={"app": "csi-rbdplugin"},
+                                  cluster=cephcluster),
+        failure_ocs.DeletePodType(namespace=cli_args.ocs_namespace,
+                                  labels={"app": "csi-rbdplugin-provisioner"},
+                                  cluster=cephcluster),
+        # ceph component pods
+        failure_ocs.DeletePodType(namespace=cli_args.ocs_namespace,
+                                  labels={"app": "rook-ceph-mon"},
+                                  cluster=cephcluster),
+        failure_ocs.DeletePodType(namespace=cli_args.ocs_namespace,
+                                  labels={"app": "rook-ceph-osd"},
+                                  cluster=cephcluster),
+        # operator component pods
+        failure_ocs.DeletePodType(namespace=cli_args.ocs_namespace,
+                                  labels={"app": "rook-ceph-operator"},
+                                  cluster=cephcluster),
+        failure_ocs.DeletePodType(namespace=cli_args.ocs_namespace,
+                                  labels={"name": "ocs-operator"},
+                                  cluster=cephcluster),
+    ]
 
     # A list of the outstanding failures that we (may) need to repair. New
     # failures are appended, and repairs are done from the end as well (i.e.,
@@ -131,7 +145,7 @@ def main() -> None:
 
             # TODO: We should have a better way to abstract this.
             # After all repairs have been made, ceph should become healthy
-            assert failure_ocs.await_ceph_healthy(ocs_namespace, mitigation_timeout)
+            assert cephcluster.is_healthy(mitigation_timeout)
 
             # Wait until it's time for next failure, monitoring steady-state
             # periodically

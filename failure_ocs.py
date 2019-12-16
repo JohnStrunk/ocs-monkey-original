@@ -11,32 +11,105 @@ import kubernetes.client as k8s
 from failure import Failure, FailureType, NoSafeFailures
 import kube
 
-def ceph_is_healthy(namespace: str) -> bool:
-    crd = k8s.CustomObjectsApi()
-    cephcluster = kube.call(crd.get_namespaced_custom_object,
-                            group="ceph.rook.io",
-                            version="v1",
-                            plural="cephclusters",
-                            namespace=namespace,
-                            name=namespace)
-    is_healthy: bool = cephcluster["status"]["ceph"]["health"] == "HEALTH_OK"
-    return is_healthy
+#   status:
+#     ceph:
+#       details:
+#         OSD_NEARFULL:
+#           message: 1 nearfull osd(s)
+#           severity: HEALTH_WARN
+#         PG_BACKFILL_FULL:
+#           message: 'Low space hindering backfill (add storage if this doesn''t resolve
+#             itself): 1 pg backfill_toofull'
+#           severity: HEALTH_WARN
+#         POOL_NEARFULL:
+#           message: 3 pool(s) nearfull
+#           severity: HEALTH_WARN
+#       health: HEALTH_WARN
+#       lastChanged: "2019-12-04T19:29:27Z"
+#       lastChecked: "2019-12-04T20:20:04Z"
+#       previousHealth: HEALTH_OK
+#     state: Created
 
-def await_ceph_healthy(namespace: str, timeout_seconds: float) -> bool:
-    crd = k8s.CustomObjectsApi()
-    is_healthy = False
-    deadline = time.time() + timeout_seconds
-    while not is_healthy and deadline > time.time():
-        is_healthy = ceph_is_healthy(namespace)
-    return is_healthy
+class CephCluster:
+    """Methods for interacting with the CephCluster object."""
+    def __init__(self, namespace: str, name: str):
+        self._ns = namespace
+        self._name = name
+
+    def _get_cephcluster(self) -> kube.MANIFEST:
+        crd = k8s.CustomObjectsApi()
+        return kube.call(crd.get_namespaced_custom_object,
+                         group="ceph.rook.io",
+                         version="v1",
+                         plural="cephclusters",
+                         namespace=self._ns,
+                         name=self._name)
+
+    def _is_healthy(self) -> bool:
+        ceph = self._get_cephcluster()
+        if ceph.get("status") is None:
+            return False
+        if ceph["status"].get("ceph") is None:
+            return False
+        return ceph["status"]["ceph"]["health"] == "HEALTH_OK"
+
+    def is_healthy(self, timeout_seconds: float = 0) -> bool:
+        """Wait until the Ceph cluster is healthy."""
+        is_healthy = self._is_healthy()
+        deadline = time.time() + timeout_seconds
+        while not is_healthy and deadline > time.time():
+            time.sleep(1)
+            is_healthy = self.is_healthy()
+        return is_healthy
+
+    def problems(self) -> Dict[str, Dict[str, str]]:
+        """
+        Get the current list of problems w/ the ceph cluster.
+
+        The cephcluster's .status.ceph.details (when it exists) describes the
+        set of problems with the cluster. This function returns the list of
+        current problems from that portion of the tree.
+
+        Example:
+            status:
+              ceph:
+                details:
+                  OSD_NEARFULL:
+                    message: 1 nearfull osd(s)
+                    severity: HEALTH_WARN
+                  PG_BACKFILL_FULL:
+                    message: 'Low space hindering backfill (add storage if
+                        this doesn''t resolve itself): 1 pg backfill_toofull'
+                    severity: HEALTH_WARN
+                  POOL_NEARFULL:
+                    message: 3 pool(s) nearfull
+                    severity: HEALTH_WARN
+                health: HEALTH_WARN
+
+        p = cluster.problems()
+        p.keys() -> ["OSD_NEARFULL", "PG_BACKFILL_FULL", "POOL_NEARFULL"]
+        p["OSD_NEARFULL"]["severity"] -> "HEALTH_WARN"
+        """
+        ceph = self._get_cephcluster()
+        if ceph.get("status") is None:
+            return {}
+        if ceph["status"].get("ceph") is None:
+            return {}
+        if ceph["status"]["ceph"].get("health") is None:
+            return {}
+        return ceph["status"]["ceph"]["health"]
+
 
 class DeletePod(Failure):
-    def __init__(self, pod: kube.MANIFEST):
+    """A Failure that deletes a specific pod."""
+    def __init__(self, deployment: kube.MANIFEST, pod: kube.MANIFEST):
         self._namespace = pod["metadata"]["namespace"]
         self._name = pod["metadata"]["name"]
+        self._deployment = deployment["metadata"]["name"]
 
     def invoke(self) -> None:
         core_v1 = k8s.CoreV1Api()
+        print(f'delete: {self._namespace}/{self._name}')
         kube.call(core_v1.delete_namespaced_pod,
                   namespace=self._namespace,
                   name=self._name,
@@ -48,45 +121,61 @@ class DeletePod(Failure):
         if timeout_seconds:
             timeout = {"timeout_seconds": timeout_seconds}
 
-        # We consider the failure to be mitigated when the killed pod is
-        # recreated and enters the running state.
-        # BUG: This is broken. The pod will come back w/ a different name, and Running is true even when pod is being deleted!
-        core_v1 = k8s.CoreV1Api()
+        # We consider the failure to be mitigated when the deployment is fully
+        # ready.
+        mitigated = False
+        apps_v1 = k8s.AppsV1Api()
         watch = kubernetes.watch.Watch()
         for event in watch.stream(
-                func=core_v1.list_namespaced_pod,
+                func=apps_v1.list_namespaced_deployment,
                 namespace=self._namespace,
-                field_selector=f"metadata.name={self._name}",
+                field_selector=f"metadata.name={self._deployment}",
                 *timeout):
-            if event["object"].status.phase == "Running":
+            if event["object"].status.ready_replicas == event["object"].spec.replicas:
+                mitigated = True
                 watch.stop()
 
-        return True
+        return mitigated
 
     def __str__(self) -> str:
-        return f'F(delete pod: {self._namespace}/{self._name})'
+        return f'F(delete pod: {self._namespace}/{self._name} in deployment: {self._deployment})'
 
 
 class DeletePodType(FailureType):
-    def __init__(self, namespace: str, labels: Dict[str, str]):
+    """Deletes pods from a Deployment matching a label selector."""
+    def __init__(self, namespace: str, labels: Dict[str, str], cluster: CephCluster):
         self._labels = labels
         self._namespace = namespace
+        self._cluster = cluster
 
     def get(self) -> Failure:
-        selector = ','.join([f'{key}={val}' for (key, val) in self._labels.items()])
-        core_v1 = k8s.CoreV1Api()
-        pods = kube.call(core_v1.list_namespaced_pod,
-                         namespace=self._namespace,
-                         label_selector=selector)
-        if not pods["items"]:
-            raise NoSafeFailures(f'No pods matched: {selector}')
+        selector = ','.join([f'{key}={val}' for (key, val) in
+                             self._labels.items()])
+        apps_v1 = k8s.AppsV1Api()
+        deployments = kube.call(apps_v1.list_namespaced_deployment,
+                                namespace=self._namespace,
+                                label_selector=selector)
+        random.shuffle(deployments["items"])
+        for deployment in deployments["items"]:
+            # This is overly restrictive
+            if not self._cluster.is_healthy():
+                raise NoSafeFailures("ceph cluster is not healthy")
 
-        random.shuffle(pods["items"])
-        for pod in pods["items"]:
-            failure = DeletePod(pod)
-            # Only return failures that are survivable
-            if len(pods["items"]) >= 3 and ceph_is_healthy(self._namespace):
-                return failure
+            if deployment["spec"]["replicas"] != deployment["status"].get("ready_replicas"):
+                continue
+            print(deployment["spec"]["selector"]["match_labels"])
+            pod_selector = ','.join([f'{key}={val}' for (key, val) in
+                                     deployment["spec"]["selector"]["match_labels"].items()])
+
+            core_v1 = k8s.CoreV1Api()
+            pods = kube.call(core_v1.list_namespaced_pod,
+                             namespace=self._namespace,
+                             label_selector=pod_selector)
+            if not pods["items"]:
+                continue
+
+            random.shuffle(pods["items"])
+            return DeletePod(deployment, pods["items"][0])
         raise NoSafeFailures(f'No pods are safe to kill')
 
     def __str__(self) -> str:
