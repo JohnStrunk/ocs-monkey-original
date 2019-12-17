@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """Starts the randomized workload generator."""
 
-import argparse
+# pylint: disable=duplicate-code
+# Above disable doesn't work, so below imports are non-alpha to avoid the
+# warning
+# https://github.com/PyCQA/pylint/issues/214
 import logging
+import argparse
 import os
 import random
 import time
@@ -12,6 +16,7 @@ import log_gather
 import log_gather_ocs
 import osio
 import kube
+import util
 
 CLI_ARGS: argparse.Namespace
 RUN_ID = random.randrange(999999999)
@@ -82,20 +87,7 @@ def main() -> None:
     CLI_ARGS = parser.parse_args()
 
     log_dir = os.path.join(CLI_ARGS.log_dir, f'ocs-monkey-{RUN_ID}')
-    os.mkdir(log_dir)
-
-    handlers = [
-        logging.FileHandler(os.path.join(log_dir, "runner.log")),
-        logging.StreamHandler()
-    ]
-    logger = logging.getLogger()
-    logger.setLevel(logging.INFO)
-    logging.Formatter.converter = time.gmtime
-    formatter = \
-        logging.Formatter("%(asctime)s %(name)s - %(levelname)s - %(message)s")
-    for handler in handlers:
-        handler.setFormatter(formatter)
-        logger.addHandler(handler)
+    util.setup_logging(log_dir)
 
     logging.info("starting execution-- run id: %d", RUN_ID)
     logging.info("program arguments: %s", CLI_ARGS)

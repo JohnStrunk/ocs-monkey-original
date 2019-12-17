@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Chaos monkey randomized fault injector."""
 
+# pylint: disable=duplicate-code
 import argparse
 import logging
 import os
@@ -10,6 +11,7 @@ from typing import List, Optional
 
 import failure
 import failure_ocs
+import util
 
 RUN_ID = random.randrange(999999999)
 
@@ -29,45 +31,71 @@ def get_failure(types: List[failure.FailureType]) -> failure.Failure:
             # pass
     raise failure.NoSafeFailures
 
+def await_mitigation(instance: failure.Failure,
+                     timeout: float) -> bool:
+    """Wait for a failure to be mitigated."""
+    logging.info("awaiting mitigation")
+    time_remaining = timeout
+    sleep_time = 10
+    while time_remaining > 0 and not instance.mitigated():
+        verify_steady_state()
+        time.sleep(sleep_time)
+        time_remaining -= sleep_time
+    # Make sure the SUT has recovered (and not timed out)
+    return instance.mitigated()
+
+def await_next_failure(mttf: float, check_interval: float) -> None:
+    """Pause until the next failure."""
+    logging.info("pausing before next failure")
+    ss_last_check = 0.0
+    while random.random() > (1/mttf):
+        if time.time() > ss_last_check + check_interval:
+            verify_steady_state()
+            ss_last_check = time.time()
+        time.sleep(1)
+
 def main() -> None:
     """Inject randomized faults."""
 
-    # Parameters we should be able to configure
-    prob_addl_failure = 0.25
-    mttf = 150
-    mitigation_timeout = 15 * 60
-    steady_state_check_interval = 30
-
     parser = argparse.ArgumentParser()
-    parser.add_argument("-l", "--log-dir",
-                        default=os.getcwd(),
-                        type=str,
-                        help="Path to use for log files")
-    parser.add_argument("--ocs-namespace",
-                        default="openshift-storage",
-                        type=str,
-                        help="Namespace where the OCS components are running")
+    parser.add_argument("--additional-failure",
+                        default=0.25,
+                        type=float,
+                        help="Probability of having an additional simultaneous failure [0,1).")
+    parser.add_argument("--check-interval",
+                        default=30,
+                        type=float,
+                        help="Steady-state check interval (sec)")
     parser.add_argument("--cephcluster-name",
                         default="openshift-storage-cephcluster",
                         type=str,
                         help="Name of the cephcluster object")
+    parser.add_argument("-l", "--log-dir",
+                        default=os.getcwd(),
+                        type=str,
+                        help="Path to use for log files")
+    parser.add_argument("--mitigation-timeout",
+                        default=15 * 60,
+                        type=float,
+                        help="Failure mitigation timeout (sec).")
+    parser.add_argument("--mttf",
+                        default=150,
+                        type=float,
+                        help="Mean time to failure (sec).")
+    parser.add_argument("--ocs-namespace",
+                        default="openshift-storage",
+                        type=str,
+                        help="Namespace where the OCS components are running")
     cli_args = parser.parse_args()
 
-    log_dir = os.path.join(cli_args.log_dir, f'ocs-monkey-chaos-{RUN_ID}')
-    os.mkdir(log_dir)
+    assert (cli_args.additional_failure >= 0 and cli_args.additional_failure < 1), \
+           "Additional failure probability must be in the range [0,1)"
+    assert cli_args.mttf > 0, "mttf must be greater than 0"
+    assert cli_args.mitigation_timeout > 0, "mitigation timeout must be greater than 0"
+    assert cli_args.check_interval > 0, "steady-state check interval must be greater than 0"
 
-    handlers = [
-        logging.FileHandler(os.path.join(log_dir, "runner.log")),
-        logging.StreamHandler()
-    ]
-    logger = logging.getLogger()
-    logger.setLevel(logging.INFO)
-    logging.Formatter.converter = time.gmtime
-    formatter = \
-        logging.Formatter("%(asctime)s %(name)s - %(levelname)s - %(message)s")
-    for handler in handlers:
-        handler.setFormatter(formatter)
-        logger.addHandler(handler)
+    log_dir = os.path.join(cli_args.log_dir, f'ocs-monkey-chaos-{RUN_ID}')
+    util.setup_logging(log_dir)
 
     logging.info("starting execution-- run id: %d", RUN_ID)
     logging.info("program arguments: %s", cli_args)
@@ -116,20 +144,11 @@ def main() -> None:
         except failure.NoSafeFailures:
             pass
 
-        if random.random() > prob_addl_failure or not fail_instance:
+        if random.random() > cli_args.additional_failure or not fail_instance:
             # don't cause more simultaneous failures
-            if fail_instance:  # we should await mitigation
-                logging.info("awaiting mitigation")
-                time_remaining = mitigation_timeout
-                while time_remaining > 0 and not fail_instance.mitigated():
-                    sleep_time = 10
-                    verify_steady_state()
-                    time.sleep(10)
-                    time_remaining -= sleep_time
-                # Make sure the SUT has recovered (and not timed out)
-                if not fail_instance.mitigated():
-                    # This shouldn't be an assert... but what should we do?
-                    assert False
+            if fail_instance:
+                # This shouldn't be an assert... but what should we do?
+                assert await_mitigation(fail_instance, cli_args.mitigation_timeout)
 
             verify_steady_state()
 
@@ -143,19 +162,13 @@ def main() -> None:
 
             verify_steady_state()
 
-            # TODO: We should have a better way to abstract this.
             # After all repairs have been made, ceph should become healthy
-            assert cephcluster.is_healthy(mitigation_timeout)
+            logging.info("waiting for ceph cluster to be healthy")
+            assert cephcluster.is_healthy(cli_args.mitigation_timeout)
 
             # Wait until it's time for next failure, monitoring steady-state
             # periodically
-            logging.info("pausing before next failure")
-            ss_last_check = 0.0
-            while random.random() > (1/mttf):
-                if time.time() > ss_last_check + steady_state_check_interval:
-                    verify_steady_state()
-                    ss_last_check = time.time()
-                time.sleep(1)
+            await_next_failure(cli_args.mttf, cli_args.check_interval)
 
 if __name__ == '__main__':
     main()

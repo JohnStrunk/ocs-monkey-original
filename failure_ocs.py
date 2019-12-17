@@ -51,7 +51,8 @@ class CephCluster:
             return False
         if ceph["status"].get("ceph") is None:
             return False
-        return ceph["status"]["ceph"]["health"] == "HEALTH_OK"
+        healthy: bool = ceph["status"]["ceph"]["health"] == "HEALTH_OK"
+        return healthy
 
     def is_healthy(self, timeout_seconds: float = 0) -> bool:
         """Wait until the Ceph cluster is healthy."""
@@ -95,9 +96,10 @@ class CephCluster:
             return {}
         if ceph["status"].get("ceph") is None:
             return {}
-        if ceph["status"]["ceph"].get("health") is None:
+        if ceph["status"]["ceph"].get("details") is None:
             return {}
-        return ceph["status"]["ceph"]["health"]
+        problems: Dict[str, Dict[str, str]] = ceph["status"]["ceph"]["health"]
+        return problems
 
 
 class DeletePod(Failure):
