@@ -54,6 +54,8 @@ def call(api: 'Callable[..., Any]', *args: Any, **kwargs: Any) -> MANIFEST:
                 time.sleep(1)
                 continue
             raise
+    if isinstance(result, dict):
+        return result
     return dict(result.to_dict())
 
 def create_namespace(name: str, existing_ok: bool = False) -> MANIFEST:

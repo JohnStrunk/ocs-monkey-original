@@ -30,6 +30,7 @@ jobs:
       language: python
       python: 3.6
       install:
+        - pip install --upgrade pip
         - travis_retry gem install asciidoctor mdl
         - travis_retry pip install yamllint tox
         - travis_retry curl -L 'https://raw.githubusercontent.com/helm/helm/master/scripts/get' | bash -s -- --version ${HELM_VERSION}
