@@ -111,7 +111,6 @@ class DeletePod(Failure):
 
     def invoke(self) -> None:
         core_v1 = k8s.CoreV1Api()
-        print(f'delete: {self._namespace}/{self._name}')
         kube.call(core_v1.delete_namespaced_pod,
                   namespace=self._namespace,
                   name=self._name,
@@ -165,7 +164,6 @@ class DeletePodType(FailureType):
 
             if deployment["spec"]["replicas"] != deployment["status"].get("ready_replicas"):
                 continue
-            print(deployment["spec"]["selector"]["match_labels"])
             pod_selector = ','.join([f'{key}={val}' for (key, val) in
                                      deployment["spec"]["selector"]["match_labels"].items()])
 

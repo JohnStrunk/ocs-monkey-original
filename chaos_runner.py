@@ -26,9 +26,8 @@ def get_failure(types: List[failure.FailureType]) -> failure.Failure:
         try:
             instance = fail_type.get()
             return instance
-        except failure.NoSafeFailures as ex:
-            print("unsafe: %s (%s)", fail_type, ex)
-            # pass
+        except failure.NoSafeFailures:
+            pass
     raise failure.NoSafeFailures
 
 def await_mitigation(instance: failure.Failure,
