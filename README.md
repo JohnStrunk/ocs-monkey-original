@@ -6,11 +6,16 @@ This repo is designed to provide a randomized load for "chaos testing".
 
 ## Status
 
+
+
+
 - Generator container: [![Docker Repository on
   Quay](https://quay.io/repository/johnstrunk/ocs-monkey-generator/status
   "Docker Repository on
   Quay")](https://quay.io/repository/johnstrunk/ocs-monkey-generator)
-- Workload container: [![Docker Repository on
+- Workload container: ![OSIO workload container
+  status](https://github.com/JohnStrunk/ocs-monkey/workflows/OSIO%20workload/badge.svg)
+  [![Docker Repository on
   Quay](https://quay.io/repository/johnstrunk/osio-workload/status "Docker
   Repository on Quay")](https://quay.io/repository/johnstrunk/osio-workload)
 
