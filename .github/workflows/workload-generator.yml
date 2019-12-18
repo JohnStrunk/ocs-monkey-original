@@ -1,0 +1,130 @@
+---
+# yamllint disable rule:line-length
+
+name: Workload generator
+on:  # yamllint disable-line rule:truthy
+  push:
+  pull_request:
+  schedule:
+    - cron: "15 4 * * 1"  # 4:15 every Monday
+
+env:
+  HELM_VERSION: "3.0.1"
+  IMAGE: "quay.io/johnstrunk/ocs-monkey-generator"
+  KIND_VERSION: "0.6.1"
+  KUBERNETES_VERSION: "1.16.3"
+
+jobs:
+  test:
+    name: Lint & test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v1
+
+      - name: Setup Python
+        uses: actions/setup-python@v1
+        with:
+          python-version: '3.6'
+
+      - name: Install prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ruby
+          sudo gem install asciidoctor mdl
+          sudo pip install --upgrade pip
+          sudo pip install yamllint tox
+
+      - name: Start kind cluster
+        run: |
+          curl -LO "https://storage.googleapis.com/kubernetes-release/release/v${KUBERNETES_VERSION}/bin/linux/amd64/kubectl"
+          sudo install ./kubectl /usr/local/bin/ && rm kubectl
+          kubectl version --short --client
+          kubectl version --short --client | grep -q ${KUBERNETES_VERSION}
+          curl -L -o kind https://github.com/kubernetes-sigs/kind/releases/download/v${KIND_VERSION}/kind-linux-amd64
+          sudo install ./kind /usr/local/bin && rm kind
+          kind version
+          kind version | grep -q ${KIND_VERSION}
+          kind create cluster --image "kindest/node:v${KUBERNETES_VERSION}"
+          kubectl version
+          kubectl get nodes
+
+      - name: tox
+        run: tox -v -e py36,py36-kubetest,srclint
+
+      - name: Lint helm chart
+        run: |
+          curl -L 'https://raw.githubusercontent.com/helm/helm/master/scripts/get' | bash -s -- --version ${HELM_VERSION}
+          helm version
+          helm version | grep -q ${HELM_VERSION}
+          helm lint helm/ocs-monkey-generator
+
+  build:
+    name: Build generator container
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v1
+
+      - name: Build container
+        run: |
+          ./build.sh "${IMAGE}"
+          docker inspect "${IMAGE}"
+
+      - name: Export container image
+        run: docker save -o /tmp/generator-image.tar ${IMAGE}
+
+      - name: Save container as artifact
+        uses: actions/upload-artifact@v1
+        with:
+          name: generator-container
+          path: /tmp/generator-image.tar
+
+
+  push:
+    name: "Push container to registry"
+    runs-on: ubuntu-latest
+    needs: [build, test]
+    if: >
+      (github.event_name == 'push' || github.event_name == 'schedule') &&
+      (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))
+
+    steps:
+      - name: Load container artifact
+        uses: actions/download-artifact@v1
+        with:
+          name: generator-container
+          path: /tmp
+
+      - name: Import container image
+        run: |
+          docker load -i /tmp/generator-image.tar
+          docker inspect ${IMAGE}
+
+      - name: Login to registry
+        # If the registry server is specified in the image name, we use that.
+        # If the server isn't in the image name, default to docker.io
+        run: |
+          [[ "${IMAGE}" =~ ^([^/]+)/[^/]+/[^/]+ ]] && REGISTRY="${BASH_REMATCH[1]}" || REGISTRY="docker.io"
+          echo "Attempting docker login to: ${REGISTRY}"
+          echo "${{ secrets.REGISTRY_PASSWORD }}" | docker login -u "${{ secrets.REGISTRY_USERNAME }}" --password-stdin ${REGISTRY}
+
+      - name: Push to registry (latest)
+        if: >
+          (github.event_name == 'push' || github.event_name == 'schedule') &&
+          github.ref == 'refs/heads/master'
+        run: |
+          docker push "${IMAGE}"
+
+      - name: Push to registry (version tag)
+        if: >
+          (github.event_name == 'push' || github.event_name == 'schedule') &&
+          startsWith(github.ref, 'refs/tags/v')
+        run: |
+          [[ "${{ github.ref }}" =~ ^refs/tags/v([0-9]+\..*) ]] || exit 0
+          TAG="${BASH_REMATCH[1]}"
+          echo "Pushing to $TAG"
+          docker tag "${IMAGE}" "${IMAGE}:${TAG}"
+          docker push "${IMAGE}:${TAG}"
