@@ -6,9 +6,6 @@ This repo is designed to provide a randomized load for "chaos testing".
 
 ## Status
 
-
-
-
 - Generator container: [![Docker Repository on
   Quay](https://quay.io/repository/johnstrunk/ocs-monkey-generator/status
   "Docker Repository on
