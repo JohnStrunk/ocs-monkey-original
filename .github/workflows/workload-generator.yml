@@ -9,7 +9,7 @@ on:  # yamllint disable-line rule:truthy
     - cron: "15 4 * * 1"  # 4:15 every Monday
 
 env:
-  HELM_VERSION: "3.0.1"
+  HELM_VERSION: "3.0.2"
   IMAGE: "quay.io/johnstrunk/ocs-monkey-generator"
   KIND_VERSION: "0.6.1"
   KUBERNETES_VERSION: "1.16.3"
@@ -55,7 +55,7 @@ jobs:
 
       - name: Lint helm chart
         run: |
-          curl -L 'https://raw.githubusercontent.com/helm/helm/master/scripts/get' | bash -s -- --version ${HELM_VERSION}
+          curl -L 'https://raw.githubusercontent.com/helm/helm/master/scripts/get' | bash -s -- --version v${HELM_VERSION}
           helm version
           helm version | grep -q ${HELM_VERSION}
           helm lint helm/ocs-monkey-generator
