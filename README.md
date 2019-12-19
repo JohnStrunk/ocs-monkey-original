@@ -4,7 +4,9 @@ This repo is designed to provide a randomized load for "chaos testing".
 
 ## Status
 
-- Generator container: [![Docker Repository on
+- Generator container: ![Workload generator container
+  status](https://github.com/JohnStrunk/ocs-monkey/workflows/Workload%20generator/badge.svg)
+  [![Docker Repository on
   Quay](https://quay.io/repository/johnstrunk/ocs-monkey-generator/status
   "Docker Repository on
   Quay")](https://quay.io/repository/johnstrunk/ocs-monkey-generator)
