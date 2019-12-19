@@ -1,4 +1,5 @@
 ---
+# yamllint disable rule:line-length
 
 pull_request_rules:
   - name: automatic merge with approved review
