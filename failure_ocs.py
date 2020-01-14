@@ -150,33 +150,41 @@ class DeletePodType(FailureType):
         self._cluster = cluster
 
     def get(self) -> Failure:
+        # This is overly restrictive. We should be looking at
+        # self._cluster.problems() and taking into account the type of failure.
+        if not self._cluster.is_healthy():
+            raise NoSafeFailures("ceph cluster is not healthy")
+
         selector = ','.join([f'{key}={val}' for (key, val) in
                              self._labels.items()])
         apps_v1 = k8s.AppsV1Api()
         deployments = kube.call(apps_v1.list_namespaced_deployment,
                                 namespace=self._namespace,
                                 label_selector=selector)
-        random.shuffle(deployments["items"])
+        if not deployments["items"]:
+            raise NoSafeFailures(f'No deployments matched selector: {selector}')
+
+        # If any of the selected Deployments are degraded, stop. This is because
+        # each component has separate Deployments per replica. E.g., MONs are 3
+        # separate deployments.
         for deployment in deployments["items"]:
-            # This is overly restrictive
-            if not self._cluster.is_healthy():
-                raise NoSafeFailures("ceph cluster is not healthy")
-
             if deployment["spec"]["replicas"] != deployment["status"].get("ready_replicas"):
-                continue
-            pod_selector = ','.join([f'{key}={val}' for (key, val) in
-                                     deployment["spec"]["selector"]["match_labels"].items()])
+                raise NoSafeFailures('No pods are safe to kill')
 
-            core_v1 = k8s.CoreV1Api()
-            pods = kube.call(core_v1.list_namespaced_pod,
-                             namespace=self._namespace,
-                             label_selector=pod_selector)
-            if not pods["items"]:
-                continue
+        random.shuffle(deployments["items"])
+        deployment = deployments["items"][0]
+        pod_selector = ','.join([f'{key}={val}' for (key, val) in
+                                 deployment["spec"]["selector"]["match_labels"].items()])
 
-            random.shuffle(pods["items"])
-            return DeletePod(deployment, pods["items"][0])
-        raise NoSafeFailures(f'No pods are safe to kill')
+        core_v1 = k8s.CoreV1Api()
+        pods = kube.call(core_v1.list_namespaced_pod,
+                         namespace=self._namespace,
+                         label_selector=pod_selector)
+        if not pods["items"]:
+            raise NoSafeFailures(f'No pods maatched selector: {pod_selector}')
+
+        random.shuffle(pods["items"])
+        return DeletePod(deployment, pods["items"][0])
 
     def __str__(self) -> str:
         return f'FT(delete pod: ns:{self._namespace} selector:{self._labels})'
