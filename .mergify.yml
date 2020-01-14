@@ -7,9 +7,9 @@ pull_request_rules:
       - "#approved-reviews-by>=1"
       - "#changes-requested-reviews-by=0"
       - label!=do-not-merge
-      - status-success=OSIO workload / Build workload container (pull_request)
-      - status-success=Workload generator / Lint & test (pull_request)
-      - status-success=Workload generator / Build generator container (pull_request)
+      - status-success=Build workload container
+      - status-success=Lint & test
+      - status-success=Build generator container
     actions:
       merge:
         method: merge
@@ -20,9 +20,9 @@ pull_request_rules:
       - "author=JohnStrunk"
       - "#changes-requested-reviews-by=0"
       - label!=do-not-merge
-      - status-success=OSIO workload / Build workload container (pull_request)
-      - status-success=Workload generator / Lint & test (pull_request)
-      - status-success=Workload generator / Build generator container (pull_request)
+      - status-success=Build workload container
+      - status-success=Lint & test
+      - status-success=Build generator container
     actions:
       merge:
         method: merge
