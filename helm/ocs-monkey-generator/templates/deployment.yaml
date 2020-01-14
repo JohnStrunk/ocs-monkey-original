@@ -48,6 +48,12 @@ spec:
             - "--osio-image"
             - "{{ .Values.osio.image }}"
             - "--sleep-on-error"
+          readinessProbe:
+            exec:
+              command: ["stat", "/tmp/healthy_runner"]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
           volumeMounts:
             - name: logdir
               mountPath: "/logs"
