@@ -21,6 +21,17 @@ import util
 CLI_ARGS: argparse.Namespace
 RUN_ID = random.randrange(999999999)
 
+def set_health(healthy: bool) -> None:
+    """Sets the state of the health indicator file."""
+    filename = "/tmp/healthy_runner"
+    if healthy:
+        logging.info("creating health file: %s", filename)
+        file = os.open(filename, os.O_CREAT | os.O_WRONLY)
+        os.close(file)
+    else:
+        logging.info("deleting health file: %s", filename)
+        os.unlink(filename)
+
 def main() -> None:
     """Run the workload."""
     parser = argparse.ArgumentParser()
@@ -101,6 +112,9 @@ def main() -> None:
 
     kube.create_namespace(CLI_ARGS.namespace, existing_ok=True)
 
+    if CLI_ARGS.sleep_on_error:
+        set_health(True)
+
     dispatch = event.Dispatcher()
     dispatch.add(*osio.resume(CLI_ARGS.namespace))
     dispatch.add(osio.start(namespace=CLI_ARGS.namespace,
@@ -117,6 +131,8 @@ def main() -> None:
     try:
         dispatch.run()
     except osio.UnhealthyDeployment:
+        if CLI_ARGS.sleep_on_error:
+            set_health(False)
         logging.info("starting log collection")
         log_gather.gather(log_dir)
         logging.info("Controller stopped due to detected error")
