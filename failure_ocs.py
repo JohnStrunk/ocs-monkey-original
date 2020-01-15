@@ -1,6 +1,7 @@
 """
 Failure types for OCS.
 """
+import logging
 import random
 import time
 from typing import Dict
@@ -59,7 +60,9 @@ class CephCluster:
         is_healthy = self._is_healthy()
         deadline = time.time() + timeout_seconds
         while not is_healthy and deadline > time.time():
-            time.sleep(1)
+            plist = ", ".join(self.problems().keys())
+            logging.info("Current ceph problems: %s", plist)
+            time.sleep(5)
             is_healthy = self.is_healthy()
         return is_healthy
 
@@ -98,7 +101,7 @@ class CephCluster:
             return {}
         if ceph["status"]["ceph"].get("details") is None:
             return {}
-        problems: Dict[str, Dict[str, str]] = ceph["status"]["ceph"]["health"]
+        problems: Dict[str, Dict[str, str]] = ceph["status"]["ceph"]["details"]
         return problems
 
 
