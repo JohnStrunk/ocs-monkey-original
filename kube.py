@@ -85,3 +85,16 @@ def create_namespace(name: str, existing_ok: bool = False) -> MANIFEST:
     ns_list = call(core_v1.list_namespace,
                    field_selector=f'metadata.name={name}')
     return ns_list["items"][0]  # type: ignore
+
+def deployment_is_ready(namespace: str, name: str) -> bool:
+    """Determine if a Deployment's pods are passing readiness check."""
+    apps_v1 = k8s.AppsV1Api()
+    deployments = call(apps_v1.list_namespaced_deployment,
+                       namespace=namespace,
+                       field_selector=f'metadata.name={name}')
+    if not deployments["items"]:
+        return False
+    deployment = deployments["items"][0]
+    if deployment["spec"]["replicas"] == deployment["status"].get("ready_replicas"):
+        return True
+    return False

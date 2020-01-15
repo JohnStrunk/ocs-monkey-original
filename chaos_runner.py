@@ -11,12 +11,22 @@ from typing import List, Optional
 
 import failure
 import failure_ocs
+import kube
 import util
 
 RUN_ID = random.randrange(999999999)
 
+STEADY_STATE_DEPLOYMENTS: List[str] = []
+
 def verify_steady_state() -> bool:
     """Verify the steady state hypothesis."""
+    for deploy in STEADY_STATE_DEPLOYMENTS:
+        [namespace, name] = deploy.split("/")
+        if not kube.deployment_is_ready(namespace, name):
+            logging.error("deployment %s failed readiness check", deploy)
+            assert False, "ABORT"
+        else:
+            logging.info("deployment %s is healthy", deploy)
     return True
 
 def get_failure(types: List[failure.FailureType]) -> failure.Failure:
@@ -85,6 +95,11 @@ def main() -> None:
                         default="openshift-storage",
                         type=str,
                         help="Namespace where the OCS components are running")
+    parser.add_argument("--monitor-deployment",
+                        action="append",
+                        type=str,
+                        help="namespace/name of a deployment's health to "
+                        "monitor as part of steady-state hypothesis")
     cli_args = parser.parse_args()
 
     assert (cli_args.additional_failure >= 0 and cli_args.additional_failure < 1), \
@@ -92,6 +107,12 @@ def main() -> None:
     assert cli_args.mttf > 0, "mttf must be greater than 0"
     assert cli_args.mitigation_timeout > 0, "mitigation timeout must be greater than 0"
     assert cli_args.check_interval > 0, "steady-state check interval must be greater than 0"
+    global STEADY_STATE_DEPLOYMENTS # pylint: disable=global-statement
+    if cli_args.monitor_deployment is not None:
+        for deploy in cli_args.monitor_deployment:
+            ns_name = deploy.split("/")
+            assert len(ns_name) == 2, "--monitor-deployment must be in namespace/name format"
+        STEADY_STATE_DEPLOYMENTS = cli_args.monitor_deployment
 
     log_dir = os.path.join(cli_args.log_dir, f'ocs-monkey-chaos-{RUN_ID}')
     util.setup_logging(log_dir)
@@ -99,6 +120,7 @@ def main() -> None:
     logging.info("starting execution-- run id: %d", RUN_ID)
     logging.info("program arguments: %s", cli_args)
     logging.info("log directory: %s", log_dir)
+    logging.info("monitoring health of %d Deployments", len(STEADY_STATE_DEPLOYMENTS))
 
     cephcluster = failure_ocs.CephCluster(cli_args.ocs_namespace,
                                           cli_args.cephcluster_name)
